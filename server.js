@@ -691,7 +691,9 @@ async function api(req, res, u) {
     }));
     return json(res, 200, { covers: out, pending });
   }
-  if (p === '/api/featured') return json(res, 200, await featuredFull());
+  /* metadata is fetched in the visitor's browser from the source sites; this
+     endpoint only returns the daily catalog pick (no external API calls). */
+  if (p === '/api/featured') return json(res, 200, featured());
   if (p === '/api/enrich') {
     const title = String(u.searchParams.get('q') || '').trim();
     if (!title) return json(res, 400, { error: 'missing q' });
@@ -725,7 +727,6 @@ server.listen(PORT, HOST, () => {
   console.log(`lookmv running at http://localhost:${PORT}`);
   console.log(`users: ${USERS_FILE}`);
   console.log(`API config: ${CONFIG_FILE}`);
-  // Warm the once-per-day lists without delaying the HTTP listener.
-  setTimeout(() => refreshHomeFeed().catch(e => console.warn('[home-feed] warmup failed:', e.message)), 1200).unref();
-  setTimeout(() => featuredFull().catch(e => console.warn('[featured] warmup failed:', e.message)), 2500).unref();
+  // The browser now builds the home lists itself from the source sites.
+  // No external metadata is fetched on the server.
 });

@@ -6,7 +6,7 @@
 <title>lookmv | Watch Movie</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;800&family=Orbitron:wght@800;900&display=swap">
 <style>
-:root{--d:1;--bg:#080b0a;--pn:#101614;--ln:#26302c;--tl:#52e39a;--pk:#f27a86;--yl:#e8b84a;--pu:#7fe3ee;--tx:#e8efea;--mt:#8a968f;--on:#04140a;--onpk:#2a0509;--sh:#0006;--spring:cubic-bezier(.32,.72,0,1);--pop:cubic-bezier(.34,1.56,.64,1)}
+:root{--d:1;--bg:#080b0a;--pn:#101614;--ln:#26302c;--tl:#52e39a;--pk:#f27a86;--yl:#e8b84a;--pu:#7fe3ee;--tx:#e8efea;--mt:#8a968f;--on:#04140a;--onpk:#2a0509;--sh:#0006;--spring:cubic-bezier(.32,.72,0,1);--pop:cubic-bezier(.34,1.56,.64,1);--slow:cubic-bezier(.4,0,.2,1)}
 :root[data-theme=light]{--bg:#f2f9f4;--pn:#ffffff;--ln:#cfdcd3;--tl:#1b8a4a;--pk:#c0392b;--yl:#a06a00;--pu:#0b7a8a;--tx:#101a14;--mt:#5d6a62;--on:#ffffff;--onpk:#ffffff;--sh:#10281a14}
 @property --d-unused{syntax:'<number>';inherits:true;initial-value:1}
 :root[dir=ltr]{--d:-1}
@@ -67,7 +67,7 @@ button{font:inherit;color:inherit}
 .view[hidden]{display:none}
 .view.pad{padding-top:120px}
 h1,h2{font-weight:800}
-.rv{opacity:0;transform:translateY(34px);transition:opacity 1.1s var(--spring),transform 1.1s var(--spring)}
+.rv{opacity:0;transform:translateY(24px);transition:opacity .55s var(--spring),transform .55s var(--spring)}
 .rv.in{opacity:1;transform:none}
 .hero{position:relative;overflow:hidden;margin:0 -5vw;min-height:600px;padding:0 5vw 100px;display:flex;flex-direction:column;justify-content:flex-end;gap:18px;background:var(--pn)}
 .hero .blob{position:absolute;border-radius:50%;filter:blur(70px);opacity:.4}
@@ -98,7 +98,7 @@ h1,h2{font-weight:800}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:22px;padding:8px 0}
 .c{flex:0 0 190px;display:flex;flex-direction:column;gap:10px;transition:transform .6s var(--spring)}
 .grid .c{flex:none}
-.in .c,.view .grid .c{animation:rise .9s var(--spring) backwards;animation-delay:calc(min(var(--i,0),12)*60ms)}
+.in .c,.view .grid .c{animation:rise .5s var(--spring) backwards;animation-delay:calc(min(var(--i,0),12)*35ms)}
 .c:hover{transform:scale(1.07)}
 .p{position:relative;aspect-ratio:2/3;border-radius:16px;background:var(--pn);border:1px solid var(--ln);display:flex;align-items:flex-end;justify-content:space-between;padding:8px;transition:box-shadow .6s var(--spring)}
 .c:hover .p{box-shadow:0 16px 36px var(--sh)}
@@ -228,17 +228,18 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 .mpanel{max-width:900px}
 .mpanel[hidden]{display:none}
 .accs{display:grid;gap:12px}
-.acc{border:1px solid var(--ln);border-radius:18px;background:var(--pn);overflow:hidden;transition:border-color .4s}
+.acc{border:1px solid var(--ln);border-radius:18px;background:var(--pn);overflow:hidden;transition:border-color .35s var(--slow)}
 .acc.open{border-color:var(--c)}
 .acc-h{width:100%;display:flex;align-items:center;gap:14px;min-height:64px;padding:12px 18px;border:0;background:none;cursor:pointer;text-align:start}
 .acc-h:active{color:var(--pk)}
 .qb{min-width:76px;padding:6px 14px;border-radius:999px;background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--c);font-weight:800;text-align:center}
 .acc-h .sub{flex:1;color:var(--mt);font-size:13px}
 .chev{display:grid;place-items:center;color:var(--mt)}
-.chev svg{width:22px;height:22px;transition:transform .55s var(--spring)}
+.chev svg{width:22px;height:22px;transition:transform .4s var(--slow)}
 .acc.open .chev svg{transform:rotate(180deg)}
-.acc-b{display:grid;grid-template-rows:0fr;visibility:hidden;transition:grid-template-rows .6s var(--spring),visibility 0s .6s}
+.acc-b{display:grid;grid-template-rows:0fr;visibility:hidden;transition:grid-template-rows .95s var(--slow),visibility 0s .95s}
 .acc.open .acc-b{grid-template-rows:1fr;visibility:visible;transition-delay:0s}
+.acc-b>div,.ep-b>div{contain:paint}
 .acc-b>div{overflow:hidden;min-height:0}
 .rows{display:grid;gap:10px;padding:4px 18px 18px}
 .dr{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px 10px 14px;border-radius:14px;border:1px solid var(--ln);background:color-mix(in srgb,var(--bg) 60%,transparent)}
@@ -269,26 +270,26 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 @keyframes popIn{from{opacity:0;transform:scale(.4)}}
 @keyframes blobIn{from{opacity:0;transform:scale(.5)}}
 @keyframes blobDrift{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-18px,14px) scale(1.08)}}
-#v-movie:not([hidden]) .allh{animation:fadeUp .8s var(--spring) backwards}
-#v-movie:not([hidden]) .mvhero{animation:fadeUp .9s var(--spring) backwards .05s}
-#v-movie:not([hidden]) .mvblob{animation:blobIn 1.4s var(--spring) backwards .1s,blobDrift 9s ease-in-out 1.5s infinite}
-#v-movie:not([hidden]) .mvposter{animation:posterIn 1s var(--spring) backwards .12s}
-#v-movie:not([hidden]) .mvposter .q{animation:fadeUp .7s var(--spring) backwards .55s}
-#v-movie:not([hidden]) .mvinfo h1{animation:titleIn 1s var(--spring) backwards .2s}
-#v-movie:not([hidden]) .meta>*{animation:chipIn .75s var(--pop) backwards;animation-delay:calc(.32s + var(--m,0)*.07s)}
+#v-movie:not([hidden]) .allh{animation:fadeUp .45s var(--spring) backwards}
+#v-movie:not([hidden]) .mvhero{animation:fadeUp .5s var(--spring) backwards .03s}
+#v-movie:not([hidden]) .mvblob{animation:blobIn .7s var(--spring) backwards .05s,blobDrift 9s ease-in-out 1.5s infinite}
+#v-movie:not([hidden]) .mvposter{animation:posterIn .55s var(--spring) backwards .06s}
+#v-movie:not([hidden]) .mvposter .q{animation:fadeUp .4s var(--spring) backwards .28s}
+#v-movie:not([hidden]) .mvinfo h1{animation:titleIn .55s var(--spring) backwards .1s}
+#v-movie:not([hidden]) .meta>*{animation:chipIn .4s var(--pop) backwards;animation-delay:calc(.16s + var(--m,0)*.035s)}
 .meta>:nth-child(2){--m:1}.meta>:nth-child(3){--m:2}
-#v-movie:not([hidden]) .sum{animation:fadeUp .8s var(--spring) backwards .46s}
-#v-movie:not([hidden]) .sumb{animation:fadeUp .8s var(--spring) backwards .52s}
-#v-movie:not([hidden]) .mvinfo .btns .btn{animation:popIn .8s var(--pop) backwards;animation-delay:calc(.58s + var(--m,0)*.08s)}
+#v-movie:not([hidden]) .sum{animation:fadeUp .45s var(--spring) backwards .24s}
+#v-movie:not([hidden]) .sumb{animation:fadeUp .45s var(--spring) backwards .27s}
+#v-movie:not([hidden]) .mvinfo .btns .btn{animation:popIn .45s var(--pop) backwards;animation-delay:calc(.3s + var(--m,0)*.04s)}
 .mvinfo .btns .btn:nth-child(2){--m:1}
-#v-movie:not([hidden]) .mtabs{animation:fadeUp .8s var(--spring) backwards .68s}
-#v-movie:not([hidden]) .acc{animation:fadeUp .85s var(--spring) backwards;animation-delay:calc(.78s + var(--i,0)*.08s)}
-#v-movie:not([hidden]) .cf{animation:fadeUp .8s var(--spring) backwards}
+#v-movie:not([hidden]) .mtabs{animation:fadeUp .45s var(--spring) backwards .35s}
+#v-movie:not([hidden]) .acc{animation:fadeUp .5s var(--spring) backwards;animation-delay:calc(.4s + var(--i,0)*.04s)}
+#v-movie:not([hidden]) .cf{animation:fadeUp .45s var(--spring) backwards}
 .cm:nth-child(2){animation-delay:.07s}.cm:nth-child(3){animation-delay:.14s}.cm:nth-child(4){animation-delay:.21s}.cm:nth-child(5){animation-delay:.28s}
 /* download rows slide in one after another when an accordion opens */
-.dr{opacity:0;transform:translateY(10px);transition:opacity .3s,transform .3s}
-.acc.open .dr{opacity:1;transform:none;transition:opacity .6s var(--spring),transform .6s var(--spring);transition-delay:calc(.12s + var(--r,0)*.07s)}
-.dr:nth-child(2){--r:1}.dr:nth-child(3){--r:2}.dr:nth-child(4){--r:3}.dr:nth-child(5){--r:4}
+.dr{opacity:0;transform:translateY(8px);transition:opacity .4s var(--slow),transform .4s var(--slow)}
+.acc.open .dr{opacity:1;transform:none;transition:opacity .45s var(--slow),transform .45s var(--slow);transition-delay:calc(.07s + var(--r,0)*.035s)}
+.dr:nth-child(2){--r:1}.dr:nth-child(3){--r:2}.dr:nth-child(4){--r:3}.dr:nth-child(5){--r:4}.dr:nth-child(n+6){--r:5}
 .acc-h:hover .qb{transform:scale(1.06)}.qb{transition:transform .5s var(--pop)}
 /* cover zoom */
 .mvposter{overflow:hidden;cursor:zoom-in;transition:transform .7s var(--spring),box-shadow .7s var(--spring)}
@@ -323,6 +324,7 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 .mi,.ei{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:46px;padding:0 12px;border:0;border-radius:12px;background:none;color:#fff;cursor:pointer;font-size:14px;text-align:start;transition:background-color .3s,color .3s}
 .mi:hover,.ei:hover{background:#ffffff1a}.mi.on,.ei.on{color:var(--tl);background:#52e39a1f;font-weight:600}.mi small{color:#fff9}
 .ei{justify-content:flex-start;gap:12px}.ei b{width:30px;height:30px;border-radius:50%;background:#ffffff1a;display:grid;place-items:center;font-size:13px}
+.plseasons{display:flex;flex-wrap:wrap;gap:6px;padding:4px 6px 8px}.plseasons .ps{border:1px solid #ffffff2b;border-radius:999px;background:none;color:#fff;padding:6px 12px;font-size:12px;cursor:pointer}.plseasons .ps.on{background:#52e39a26;border-color:var(--tl);color:var(--tl);font-weight:700}
 .pl.pick .pls{position:relative;inset:auto;max-height:78vh;width:min(420px,calc(100% - 32px));z-index:3}
 @media(max-width:760px){.pls{top:auto;bottom:0;left:0;right:0;width:auto;max-height:60vh;border-radius:24px 24px 0 0}.pm{bottom:96px}.plr .tm{margin:0 2px;font-size:12px}.plr{gap:4px}.pib{width:40px;height:40px;flex-basis:40px}}
 /* footer icons + rules modal */
@@ -408,15 +410,19 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 .chip.on{border-color:var(--tl);color:var(--tl)}
 .seasons{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .eps{display:grid;gap:10px}
-.ep{border:1px solid var(--ln);border-radius:16px;background:var(--pn);overflow:hidden;transition:border-color .4s}
+.ep{border:1px solid var(--ln);border-radius:16px;background:var(--pn);overflow:hidden;transition:border-color .35s var(--slow)}
 .ep.open{border-color:var(--tl)}
 .ep-h{width:100%;display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 16px;border:0;background:none;cursor:pointer;text-align:start;font-weight:600}
 .ep-h .en{flex:0 0 36px;height:36px;border-radius:50%;background:color-mix(in srgb,var(--tl) 18%,transparent);color:var(--tl);display:grid;place-items:center;font-size:13px;font-weight:800}
 .ep-h .sub{flex:1;color:var(--mt);font-size:13px;font-weight:400}
-.ep-h .chev svg{width:20px;height:20px;transition:transform .5s var(--spring)}
+.ep-h .chev svg{width:20px;height:20px;transition:transform .4s var(--slow)}
 .ep.open .chev svg{transform:rotate(180deg)}
-.ep-b{display:none;gap:8px;padding:0 14px 14px}
-.ep.open .ep-b{display:grid}
+.ep-b{display:grid;grid-template-rows:0fr;visibility:hidden;transition:grid-template-rows .95s var(--slow),visibility 0s .95s}
+.ep.open .ep-b{grid-template-rows:1fr;visibility:visible;transition-delay:0s}
+.ep-b>div{overflow:hidden;min-height:0}
+.ep-bi{display:grid;gap:8px;padding:0 14px 14px;opacity:0;transform:translateY(-6px);transition:opacity .5s var(--slow),transform .5s var(--slow)}
+.ep.open .ep-bi{opacity:1;transform:none;transition:opacity .45s var(--slow) .06s,transform .45s var(--slow) .06s}
+.abs{display:flex;gap:6px;flex:0 0 auto}.abs .btn{flex:0 0 auto}
 .lr{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px 10px 14px;border-radius:14px;border:1px solid var(--ln);background:color-mix(in srgb,var(--bg) 60%,transparent)}
 .lr .nm{display:flex;flex-direction:column;gap:2px;font-weight:600;font-size:14px;min-width:0}
 .lr .sz{color:var(--mt);font-size:12px;font-weight:400}
@@ -455,7 +461,6 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
   <div class="hero">
     <div class="blob" style="top:90px;inset-inline-end:8%;width:340px;height:340px;background:var(--tl)"></div>
     <div class="blob" style="top:230px;inset-inline-end:34%;width:260px;height:260px;background:var(--pu)"></div>
-    <span class="chip" id="featuredBadge" style="pointer-events:none;border-color:var(--tl);color:var(--tl)">★ فیلم ویژه امروز</span>
     <h1 id="heroTitle">در حال بارگذاری…</h1>
     <div class="meta" id="heroMeta"></div>
     <p id="heroSum">یک فیلم به صورت تصادفی هر ۲۴ ساعت انتخاب می‌شود.</p>
@@ -470,7 +475,7 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
     <span id="homeChips"></span>
   </div>
   <section class="rv"><h2 class="rowh">جدیدترین‌ها</h2><div class="scroll" data-row="new"></div></section>
-  <section class="rv"><h2 class="rowh">۱۰ فیلم برتر امروز</h2><div class="scroll" style="gap:34px" data-row="top"></div></section>
+  <section class="rv"><h2 class="rowh">برتر امروز</h2><div class="scroll" style="gap:34px" data-row="top"></div></section>
   <section class="rv"><h2 class="rowh">پیشنهاد برای شما</h2><div class="scroll" data-row="rec"></div></section>
 </section>
 
@@ -527,7 +532,7 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
     <div class="mvinfo">
       <h1 id="mvTitle"></h1>
       <div class="meta">
-        <span class="imdb" dir="ltr" aria-label="امتیاز IMDb"><b>IMDb</b><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7L2 9.2l7.1-.6z"/></svg><span id="mvImdb"></span><small>/10</small></span>
+        <span class="imdb" dir="ltr" aria-label="امتیاز"><b id="mvRateLabel">IMDb</b><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7L2 9.2l7.1-.6z"/></svg><span id="mvImdb"></span><small>/10</small></span>
         <span class="yr"><span class="k">سال ساخت</span><span id="mvYear"></span></span>
         <span class="yr" id="mvGenre"></span>
       </div>
@@ -541,7 +546,6 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
     </div>
   </div>
   <div class="trailerbox" id="trailerBox" hidden><iframe id="trailerFrame" title="تریلر" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
-  <p class="np" id="enrichNote" hidden></p>
   <div class="mtabs" id="mtabs" role="tablist" aria-label="بخش‌ها">
     <i class="mind" id="mind"></i>
     <button class="mt on" role="tab" aria-selected="true" aria-controls="p-dl" data-p="dl"><span>باکس دانلود</span></button>
@@ -591,6 +595,8 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 
+<script src="/source-meta.js"></script>
+<script src="/source-catalog.js"></script>
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const REDUCED=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -604,6 +610,16 @@ const api=async(path,opt={})=>{
   return d;
 };
 const post=(path,data)=>api(path,{method:'POST',body:JSON.stringify(data||{})});
+/* The local catalog is now only a small cache of atlasmind links + a fallback. */
+const LOCAL_SUM=new Map();
+if(window.SourceCatalog)window.SourceCatalog.local={
+  summaries:async ids=>{
+    const need=[...new Set(ids)].filter(id=>!LOCAL_SUM.has(id)).slice(0,200);
+    if(need.length){try{const d=await api('/api/movies?ids='+encodeURIComponent(need.join(',')));(d.items||[]).forEach(m=>LOCAL_SUM.set(m.id,m))}catch(_){}}
+    return new Map(ids.map(id=>[id,LOCAL_SUM.get(id)]).filter(x=>x[1]));
+  },
+  full:async id=>{try{return await api('/api/movies/'+encodeURIComponent(id))}catch(_){return null}}
+};
 let toastT;
 const toast=(msg,err=false)=>{
   const t=$('#toast');t.textContent=msg;t.classList.toggle('err',err);t.classList.add('on');
@@ -629,13 +645,15 @@ function posterBG(m){
   return `<div class="posterbg" aria-hidden="true" style="background:linear-gradient(${h%2?145:215}deg,hsl(${a} 62% 34%),hsl(${b} 58% 14%))"></div>`;
 }
 const coverImg=u=>u?`<img class="cov" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="" src="${esc(u)}" onload="this.classList.add('ok')" onerror="this.remove()">`:'';
-const badge=(m,cv)=>{const r=cv&&cv.imdb;return r?'★ '+esc(r):(m&&m.siteRating?esc(m.siteRating):'')};
+const badge=(m,cv)=>{const r=cv&&(cv.rating||cv.imdb||cv.vote);return r?'★ '+esc(r):(m&&m.siteRating?esc(m.siteRating):'')};
 const card=(m,i,top)=>{
   if(!m)return '';
+  SUMMARIES.set(m.id,m);
+  /* live source results already carry poster / rating / year — no extra request */
+  if(m.poster&&!COVERS.has(m.id))COVERS.set(m.id,{poster:m.poster,backdrop:m.backdrop||'',rating:m.siteRating||m.rating||'',ratingLabel:m.ratingLabel||'IMDb',year:m.year||'',plot:m.plot||''});
   const q=m.topQ||'',cv=COVERS.get(m.id)||null,yr=esc(String(m.year||(cv&&cv.year)||'').slice(0,4));
   const btn=`<button type="button" class="dl" data-dl="${esc(m.id)}" aria-label="دانلود">${DL}</button>`;
   const bm=`<button type="button" class="bm${saved.has(m.id)?' sv':''}" data-id="${esc(m.id)}" aria-label="ذخیره در لیست من">${BM}</button>`;
-  SUMMARIES.set(m.id,m);
   const inner=`${posterBG(m)}${coverImg(cv&&cv.poster)}${bm}<span class="bdg" dir="ltr">${badge(m,cv)}</span>${btn}<span class="q">${esc(q)}</span>`;
   if(top)return `<div class="tp" data-id="${esc(m.id)}" tabindex="0"><span class="n">${i+1}</span><div class="p w">${inner}</div></div>`;
   return `<div class="c" style="--i:${i}" data-id="${esc(m.id)}" tabindex="0"><div class="p">${inner}</div><p class="t" dir="auto">${esc(m.title||m.titleEn||'')}</p><p class="ysub" dir="ltr">${yr}</p></div>`};
@@ -647,19 +665,48 @@ function applyCover(id){
     if(cv.poster&&!p.querySelector('.cov')){const bg=p.querySelector('.posterbg');bg&&bg.insertAdjacentHTML('afterend',coverImg(cv.poster))}
     const b=p.querySelector('.bdg');if(b)b.textContent=badge(m,cv);
     const y=el.querySelector('.ysub');if(y&&!y.textContent)y.textContent=String(m.year||cv.year||'').slice(0,4)})}
-async function loadCovers(items,round=0){
-  const ids=[...new Set((items||[]).map(m=>m&&m.id).filter(id=>id&&!COVERS.has(id)&&!COVNO.has(id)))];
-  for(let i=0;i<ids.length;i+=30){
-    try{
-      const d=await api('/api/covers?ids='+encodeURIComponent(ids.slice(i,i+30).join(',')));
-      Object.entries(d.covers||{}).forEach(([id,cv])=>{if(cv&&(cv.poster||cv.imdb||cv.year)){COVERS.set(id,cv);applyCover(id)}else COVNO.add(id)});
-      if(d.pending&&d.pending.length&&round<3)setTimeout(()=>loadCovers(d.pending.map(id=>({id})),round+1),3000);
-    }catch(_){}}}
+/* Covers, year and rating are fetched by the browser itself from the two source
+   sites' public WordPress REST APIs (see public/source-meta.js). No server call. */
+async function loadCovers(items){
+  const todo=(items||[]).filter(m=>m&&m.id&&!COVERS.has(m.id)&&!COVNO.has(m.id));
+  if(!todo.length||!window.SourceMeta)return;
+  await SourceMeta.batch(todo,(m,cv)=>{
+    if(cv&&(cv.poster||cv.rating||cv.imdb||cv.year)){COVERS.set(m.id,cv);applyCover(m.id)}
+    else COVNO.add(m.id)
+  });
+}
 const MORE=k=>`<button class="more" data-more="${k}" aria-label="بیشتر"><span class="mc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></span><span>بیشتر</span></button>`;
 
+/* One entry point for every catalog list: live from the two sites first,
+   local movies.json only as fallback when the sites cannot be reached. */
+async function fetchItems(params,kind){
+  const u=new URLSearchParams(String(params||'').replace(/^\?/,''));
+  const q=u.get('q')||'',genre=u.get('genre')||'',sort=u.get('sort')||kind||'new';
+  const page=Math.max(1,+u.get('page')||1),limit=Math.max(1,+u.get('limit')||24);
+  let d=null;
+  try{
+    if(q)d=await SourceCatalog.search(q,page,limit);
+    else if(genre)d=await SourceCatalog.browse({genre,page,limit,sort});
+    else if(kind==='top'||sort==='rating')d=await SourceCatalog.top(page,limit);
+    else d=await SourceCatalog.latest(page,limit);
+  }catch(_){}
+  if(!d||!d.items||!d.items.length){
+    d=await api('/api/movies?'+String(params||'').replace(/^\?/,'')+(String(params||'').includes('page=')?'':'&page='+page));
+  }else if(window.SourceCatalog.local){
+    /* atlasmind's site rating / top quality come from the small local link cache */
+    try{
+      const am=d.items.filter(m=>m&&m.source==='atlasmind').map(m=>m.id);
+      if(am.length){
+        const map=await SourceCatalog.local.summaries(am);
+        d.items.forEach(m=>{const l=map.get(m.id);if(l){m.siteRating=l.siteRating||'';m.topQ=l.topQ||'';m.linkCount=l.linkCount||0;m.ratingLabel=m.siteRating?'سایت':m.ratingLabel}});
+      }
+    }catch(_){}
+  }
+  return d;
+}
 async function fillRow(sel,params,top,k){
   try{
-    const d=await api('/api/movies?'+params);
+    const d=await fetchItems(params);
     $(sel).innerHTML=d.items.map((m,i)=>card(m,i,top)).join('')+MORE(k);loadCovers(d.items);
   }catch(e){$(sel).innerHTML='<p class="empty">.line-empty</p>'}
 }
@@ -667,6 +714,8 @@ async function fillRecommendations(){
   const row=$('[data-row=rec]');
   try{
     const ids=[...saved].slice(0,200);
+    if(row.dataset.ids===ids.join('|')&&row.children.length)return;
+    row.dataset.ids=ids.join('|');
     if(!ids.length){
       row.innerHTML='<p class="empty rec-empty">برای پیشنهادهای شخصی، چند فیلم به «لیست من» اضافه کنید.</p>';
       if(lang==='en')applyInstant(row,'en');
@@ -679,18 +728,46 @@ async function fillRecommendations(){
   }catch(_){row.innerHTML='<p class="empty rec-empty">پیشنهادها بارگذاری نشدند.</p>';}
   if(lang==='en')applyInstant(row,'en');
 }
-async function loadHome(){
+/* Home rows are painted from the last cached result instantly, then refreshed
+   quietly in the background. Switching tabs no longer clears and re-renders
+   the lists in front of the user. */
+const HOME_CACHE='lm_home_v1';
+let homeRefreshing=false;
+const sigOf=items=>items.map(m=>m.id).join('|');
+function readHome(){try{return JSON.parse(localStorage.getItem(HOME_CACHE)||'null')}catch(_){return null}}
+function saveHome(latest,top){try{localStorage.setItem(HOME_CACHE,JSON.stringify({at:Date.now(),latest:latest.items.slice(0,30),top:top.items.slice(0,30)}))}catch(_){}}
+function paintHomeRow(sel,items,top,k){
+  const el=$(sel);if(!el)return;
+  const sig=sigOf(items);
+  if(el.dataset.sig===sig)return;
+  el.dataset.sig=sig;
+  el.innerHTML=items.map((m,i)=>card(m,i,top)).join('')+MORE(k);
+  loadCovers(items);
+}
+async function refreshHome(){
+  if(homeRefreshing)return;
+  homeRefreshing=true;
   try{
-    const d=await api('/api/home-feed');
-    $('[data-row=new]').innerHTML=d.latest.map((m,i)=>card(m,i)).join('')+MORE('new');
-    $('[data-row=top]').innerHTML=d.top.map((m,i)=>card(m,i,true)).join('')+MORE('top');
-    loadCovers([...d.latest,...d.top]);
+    const [latest,top]=await Promise.all([fetchItems('sort=new&limit=12','new'),fetchItems('sort=rating&limit=10','top')]);
+    paintHomeRow('[data-row=new]',latest.items,false,'new');
+    paintHomeRow('[data-row=top]',top.items,true,'top');
+    saveHome(latest,top);
   }catch(e){
-    await Promise.all([
-      fillRow('[data-row=new]','sort=new&limit=10',false,'new'),
-      fillRow('[data-row=top]','sort=rating&limit=10',true,'top'),
-    ]);
+    if(!$('[data-row=new]').children.length){
+      await Promise.all([
+        fillRow('[data-row=new]','sort=new&limit=10',false,'new'),
+        fillRow('[data-row=top]','sort=rating&limit=10',true,'top'),
+      ]);
+    }
+  }finally{homeRefreshing=false}
+}
+async function loadHome(){
+  const cached=readHome();
+  if(cached&&cached.latest&&cached.top){
+    paintHomeRow('[data-row=new]',cached.latest,false,'new');
+    paintHomeRow('[data-row=top]',cached.top,true,'top');
   }
+  refreshHome();
   await fillRecommendations();
 }
 async function openRecommendationsAll(){
@@ -705,19 +782,27 @@ async function openRecommendationsAll(){
     if(cur!=='all')go('all',tabs[0]);
   }catch(_){toast('پیشنهادها بارگذاری نشدند.',true)}
 }
-function renderCategories(){
-  const g=catalog.genres.length?catalog.genres:['اکشن','درام','کمدی','ترسناک','علمی تخیلی','انیمیشن','مستند','عاشقانه'];
+async function renderCategories(){
+  let g=[];
+  try{g=await SourceCatalog.categories()}catch(_){}
+  if(!g.length){try{g=(await api('/api/catalog')).genres||[]}catch(_){}}
+  g=g.length?g:['اکشن','درام','کمدی','ترسناک','علمی تخیلی','انیمیشن','مستند','عاشقانه'];
+  catalog.genres=g;
   $('#catGrid').innerHTML=g.map((c,i)=>`<div class="box ${ACC[i%4]}" data-genre="${esc(c)}" style="animation:rise 1s ${SPRING} backwards;animation-delay:${i*70}ms"><h3 dir="auto">${esc(c)}</h3></div>`).join('');
-  $('#homeChips').innerHTML=g.slice(0,6).map(c=>`<button class="chip" data-genre="${esc(c)}">${esc(c)}</button>`).join('');
+  const pick=[...g];for(let i=pick.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pick[i],pick[j]]=[pick[j],pick[i]]}
+  $('#homeChips').innerHTML=pick.slice(0,6).map(c=>`<button class="chip" data-genre="${esc(c)}">${esc(c)}</button>`).join('');
 }
 async function renderList(){
   const ids=[...saved];
   if(!ids.length){$('#myGrid').innerHTML='';$('#emptyMsg').hidden=false;return}
   try{
-    const d=await api('/api/movies?ids='+encodeURIComponent(ids.join(',')));
-    $('#myGrid').innerHTML=d.items.map((m,i)=>card(m,i)).join('');
-    $('#emptyMsg').hidden=d.items.length>0;
-    loadCovers(d.items);
+    let items=[];
+    if(window.SourceCatalog){try{items=await SourceCatalog.byIds(ids)}catch(_){}}
+    if(!items.length)items=(await api('/api/movies?ids='+encodeURIComponent(ids.join(',')))).items||[];
+    items=ids.map(id=>SourceCatalog.item(id)||items.find(m=>m.id===id)).filter(Boolean);
+    $('#myGrid').innerHTML=items.map((m,i)=>card(m,i)).join('');
+    $('#emptyMsg').hidden=items.length>0;
+    loadCovers(items);
   }catch(e){toast('خطا در بارگذاری لیست من',true)}
   if(lang==='en')applyInstant($('#myGrid'),'en');
 }
@@ -741,7 +826,11 @@ document.addEventListener('click',e=>{
 document.addEventListener('pointerdown',e=>{const d=e.target.closest('.dl');if(d&&!DETAILS.has(d.dataset.dl))getDetail(d.dataset.dl).catch(()=>{})},true);
 async function getDetail(id){
   let m=DETAILS.get(id);
-  if(!m){m=await api('/api/movies/'+encodeURIComponent(id));DETAILS.set(id,m)}
+  if(!m){
+    if(window.SourceCatalog){try{m=await SourceCatalog.detail(id)}catch(_){}}
+    if(!m)m=await api('/api/movies/'+encodeURIComponent(id));
+    DETAILS.set(id,m);
+  }
   return m;
 }
 function triggerDownload(url){
@@ -781,14 +870,14 @@ async function go(name,btn){
   if(!still){
     links.classList.add('mv');ind.style.width=to.w+'px';ind.style.opacity=1;
     ind.animate([{transform:`translateX(${from.x}px)`,width:from.w+'px'},{transform:`translateX(${to.x}px)`,width:to.w+'px'}],{duration:650,easing:SPRING,fill:'forwards'}).onfinish=()=>{links.classList.remove('mv');ind.style.opacity=0;ind.getAnimations().forEach(a=>a.cancel())};
-    await old.animate([{opacity:1,transform:'none'},{opacity:0,transform:'translateY(-14px) scale(.985)'}],{duration:380,easing:'ease-in',fill:'forwards'}).finished.catch(()=>{});
+    await old.animate([{opacity:1,transform:'none'},{opacity:0,transform:'translateY(-14px) scale(.985)'}],{duration:220,easing:'ease-in',fill:'forwards'}).finished.catch(()=>{});
   }
   old.hidden=true;old.getAnimations().forEach(a=>a.cancel());if(name!=='movie')stopTrailer();
   if(name==='list')renderList();
   nu.hidden=false;cur=name;scrollTo({top:0,behavior:still?'auto':'smooth'});watch('#v-'+name);
   if(name==='home')loadHome();
-  if(!still)nu.animate([{opacity:0,transform:'translateY(26px) scale(.97)'},{opacity:1,transform:'none'}],{duration:1000,easing:SPRING});
-  setTimeout(()=>busy=false,still?0:450)}
+  if(!still)nu.animate([{opacity:0,transform:'translateY(20px) scale(.98)'},{opacity:1,transform:'none'}],{duration:550,easing:SPRING});
+  setTimeout(()=>busy=false,still?0:260)}
 tabs.forEach(t=>t.addEventListener('click',()=>go(t.dataset.v,t)));
 /* on phones the tabs become a bottom dock (moved out of the blurred nav, which would trap position:fixed) */
 const mq=matchMedia('(max-width:760px)'),navEl=$('.nav'),toolsEl=$('.tools');
@@ -820,10 +909,10 @@ $('#theme').onclick=e=>{
   setTimeout(()=>{H.dataset.theme=n;try{localStorage.setItem('th',n)}catch(_){}},120)};
 
 /* ---------- language: cyber-decode text swap + blur pulse ---------- */
-const EN={'© ۲۰۲۶ lookmv · تمامی حقوق محفوظ است. حقوق هر فیلم و سریال متعلق به صاحبان اثر است.':'© 2026 lookmv · All rights reserved. Rights to every movie and series belong to their respective owners.','درباره ما':'About us','تماس با ما':'Contact us','قوانین':'Rules','استفاده از lookmv فقط برای مصارف شخصی و غیرتجاری است.':'lookmv is for personal, non-commercial use only.','کپی، فروش یا بازنشر محتوا و لینک‌های سایت بدون اجازه مجاز نیست.':'Copying, selling or republishing the site’s content and links without permission is not allowed.','هر کاربر مسئول نظرات خود است؛ توهین، تبلیغات و محتوای نامناسب حذف می‌شود.':'Each user is responsible for their comments; insults, ads and inappropriate content will be removed.','هرگونه اختلال در سایت یا سوءاستفاده از پلیر و لینک‌ها ممنوع است.':'Disrupting the site or abusing the player and links is prohibited.','lookmv ممکن است قوانین را در هر زمان تغییر دهد؛ ادامهٔ استفاده یعنی پذیرش آن‌ها.':'lookmv may change these rules at any time; continued use means you accept them.','حقوق فیلم‌ها و سریال‌ها متعلق به صاحبان اثر است. برای درخواست حذف محتوا از بخش «تماس با ما» اقدام کنید.':'Rights to movies and series belong to their owners. To request removal of content, use “Contact us”.','قسمت':'Episode','انتخاب قسمت':'Select episode','کیفیت':'Quality','خودکار':'Auto','سرعت':'Speed','بستن':'Close','پخش':'Play','قسمت قبلی':'Previous episode','قسمت بعدی':'Next episode','لیست قسمت‌ها':'Episodes','صدا':'Sound','تنظیمات':'Settings','تمام‌صفحه':'Fullscreen','خانه':'Home','دسته‌بندی':'Categories','پروفایل':'Profile','لیست من':'My list','جستجو':'Search','جستجو...':'Search...','ناوبری':'Navigation','تغییر تم':'Toggle theme','تغییر زبان':'Change language','English':'فارسی',
+const EN={'در حال جستجو…':'Searching…','نتیجه‌ای پیدا نشد':'No results found','© ۲۰۲۶ lookmv · تمامی حقوق محفوظ است. حقوق هر فیلم و سریال متعلق به صاحبان اثر است.':'© 2026 lookmv · All rights reserved. Rights to every movie and series belong to their respective owners.','درباره ما':'About us','تماس با ما':'Contact us','قوانین':'Rules','استفاده از lookmv فقط برای مصارف شخصی و غیرتجاری است.':'lookmv is for personal, non-commercial use only.','کپی، فروش یا بازنشر محتوا و لینک‌های سایت بدون اجازه مجاز نیست.':'Copying, selling or republishing the site’s content and links without permission is not allowed.','هر کاربر مسئول نظرات خود است؛ توهین، تبلیغات و محتوای نامناسب حذف می‌شود.':'Each user is responsible for their comments; insults, ads and inappropriate content will be removed.','هرگونه اختلال در سایت یا سوءاستفاده از پلیر و لینک‌ها ممنوع است.':'Disrupting the site or abusing the player and links is prohibited.','lookmv ممکن است قوانین را در هر زمان تغییر دهد؛ ادامهٔ استفاده یعنی پذیرش آن‌ها.':'lookmv may change these rules at any time; continued use means you accept them.','حقوق فیلم‌ها و سریال‌ها متعلق به صاحبان اثر است. برای درخواست حذف محتوا از بخش «تماس با ما» اقدام کنید.':'Rights to movies and series belong to their owners. To request removal of content, use “Contact us”.','قسمت':'Episode','انتخاب قسمت':'Select episode','کیفیت':'Quality','خودکار':'Auto','سرعت':'Speed','بستن':'Close','پخش':'Play','قسمت قبلی':'Previous episode','قسمت بعدی':'Next episode','لیست قسمت‌ها':'Episodes','صدا':'Sound','تنظیمات':'Settings','تمام‌صفحه':'Fullscreen','خانه':'Home','دسته‌بندی':'Categories','پروفایل':'Profile','لیست من':'My list','جستجو':'Search','جستجو...':'Search...','ناوبری':'Navigation','تغییر تم':'Toggle theme','تغییر زبان':'Change language','English':'فارسی',
 '[عنوان فیلم ویژه]':'[Featured movie title]','[خلاصه داستان در دو سه خط]':'[Short synopsis in two or three lines]','تماشا':'Watch','دانلود':'Download','پخش خودکار تریلر':'Autoplay trailer',
-'اکشن':'Action','درام':'Drama','کمدی':'Comedy','ترسناک':'Horror','علمی‌تخیلی':'Sci-fi','انیمیشن':'Animation','مستند':'Documentary','عاشقانه':'Romance','دسته‌بندی‌ها':'Categories',
-'جدیدترین‌ها':'Latest','۱۰ فیلم برتر امروز':'Top 10 today','پیشنهاد برای شما':'Recommended for you','[عنوان فیلم]':'[Movie title]','ذخیره در لیست من':'Save to my list',
+'اکشن و ماجراجویی':'Action & Adventure','درام و تاریخی':'Drama & History','کمدی و خانوادگی':'Comedy & Family','ترسناک و هیجان‌انگیز':'Horror & Thriller','جنایی و معمایی':'Crime & Mystery','علمی‌تخیلی و فانتزی':'Sci-fi & Fantasy','انیمیشن و انیمه':'Animation & Anime','سریال آسیایی':'Asian Series','ایرانی':'Iranian','متفرقه':'Other','اکشن':'Action','درام':'Drama','کمدی':'Comedy','ترسناک':'Horror','علمی‌تخیلی':'Sci-fi','انیمیشن':'Animation','مستند':'Documentary','عاشقانه':'Romance','دسته‌بندی‌ها':'Categories',
+'جدیدترین‌ها':'Latest','برتر امروز':'Top today','پیشنهاد برای شما':'Recommended for you','[عنوان فیلم]':'[Movie title]','ذخیره در لیست من':'Save to my list',
 '[نام کاربر]':'[User name]','دانلود فقط با وای‌فای':'Download on Wi-Fi only','اعلان فیلم‌های جدید':'New movie alerts',
 'هنوز فیلمی ذخیره نکرده‌اید. روی نشان ذخیره در پوستر فیلم‌ها بزنید.':'Nothing saved yet. Tap the save icon on a movie poster.','برای پیشنهادهای شخصی، چند فیلم به «لیست من» اضافه کنید.':'Add a few titles to My List to get personal recommendations.','برای ژانرهای این لیست، پیشنهاد تازه‌ای پیدا نشد.':'No new recommendations were found for these genres.','پیشنهادها بارگذاری نشدند.':'Recommendations could not be loaded.',
 'بیشتر':'More','باکس دانلود':'Download box','نظرات':'Comments','ادامه':'More','کمتر':'Less','نظر خود را بنویسید...':'Write your comment...','ارسال نظر':'Post comment','همین الان':'Just now','۵ ساعت پیش':'5 hours ago','۲ روز پیش':'2 days ago','[متن نظر کاربر]':'[User comment text]','دوبله فارسی':'Persian dub','زیرنویس فارسی چسبیده':'Hardsub (Persian)','نسخه اصلی':'Original version','نسخه':'versions','سال ساخت':'Year','امتیاز IMDb':'IMDb rating','بخش‌ها':'Sections','بازگشت':'Back','نمایش بیشتر':'Show more','فصل':'Season','پوشه‌ی کامل فصل‌ها':'Full season folders','پوشه':'Folder','[متن حق نشر]':'[Copyright text]','درباره ما':'About','قوانین':'Terms','تماس':'Contact'};
@@ -842,13 +931,13 @@ function setLang(l,instant){
   swapping=true;const vis=[],rest=[];
   tnodes(document.body).forEach(n=>{const r=n.parentElement.getBoundingClientRect(),to=T(n._o,l);
     if(r.width&&r.bottom>-40&&r.top<innerHeight+40)vis.push({n,to,old:n.nodeValue,d:Math.min(Math.max(r.top,0)/innerHeight,1)*700,u:1500+Math.min(to.length,40)*25});else rest.push({n,to})});
-  const tg=$$('.view:not([hidden]),footer,.brand,.links,.tools');H.classList.add('swp');tg.forEach(e=>e.style.willChange='filter,opacity');tg.forEach(e=>e.animate([{filter:'blur(0)',opacity:1},{filter:'blur(12px)',opacity:.45,offset:.4},{filter:'blur(0)',opacity:1}],{duration:3400,easing:'cubic-bezier(.65,0,.35,1)'}));
+  const tg=$$('.view:not([hidden]),footer,.brand,.links,.tools');H.classList.add('swp');tg.forEach(e=>e.style.willChange='filter,opacity');tg.forEach(e=>e.animate([{filter:'blur(0)',opacity:1},{filter:'blur(12px)',opacity:.45,offset:.4},{filter:'blur(0)',opacity:1}],{duration:1300,easing:'cubic-bezier(.65,0,.35,1)'}));
   const t0=performance.now();let last=0;setTimeout(()=>H.classList.remove('swp'),2000);
   let flipped=false;
   (function f(now){
     if(!flipped&&now-t0>1350){flipped=true;H.classList.add('nt');flip();rest.forEach(x=>x.n.nodeValue=x.to);requestAnimationFrame(()=>requestAnimationFrame(()=>H.classList.remove('nt')))}
     if(now-last>60){last=now;vis.forEach(x=>{const p=Math.min(Math.max((now-t0-x.d)/x.u,0),1);x.n.nodeValue=p<=0?x.old:p>=1?x.to:mix(x.to,p)})}
-    if(now-t0<3400)requestAnimationFrame(f);else{vis.forEach(x=>x.n.nodeValue=x.to);H.classList.remove('swp');tg.forEach(e=>e.style.willChange='');swapping=false}
+    if(now-t0<1300)requestAnimationFrame(f);else{vis.forEach(x=>x.n.nodeValue=x.to);H.classList.remove('swp');tg.forEach(e=>e.style.willChange='');swapping=false}
   })(t0);
 }
 $('#lang').onclick=e=>{const b=e.currentTarget;if(swapping)return;
@@ -856,10 +945,11 @@ $('#lang').onclick=e=>{const b=e.currentTarget;if(swapping)return;
   setLang(lang==='fa'?'en':'fa')};
 
 /* ---------- "more": full list of a section ---------- */
-const TITLES={new:'جدیدترین ها',top:'۱۰ فیلم برتر امروز',rec:'پیشنهاد برای شما',search:'نتایج جستجو',genre:'دسته بندی'};
+const TITLES={new:'جدیدترین ها',top:'برتر امروز',rec:'پیشنهاد برای شما',search:'نتایج جستجو',genre:'دسته بندی'};
 async function openAll(k,params,title){
   $('#allTitle').textContent=title||TITLES[k]||'';
-  allState={key:params||'',page:1,hasMore:false,loading:false};
+  if(allState.ctl)try{allState.ctl.abort()}catch(_){}
+  allState={key:params||'',page:1,hasMore:false,loading:false,ctl:null};
   $('#allGrid').innerHTML='';
   await loadMore();
   if(lang==='en')applyInstant($('#v-all'),'en');
@@ -868,15 +958,51 @@ async function openAll(k,params,title){
 async function loadMore(){
   if(allState.loading||!allState.key)return;
   allState.loading=true;
+  const st=allState;
   try{
-    const key=allState.key.startsWith('?')?allState.key:'?'+allState.key;
-    const d=await api('/api/movies'+key+'&page='+allState.page+'&limit=30');
-    $('#allGrid').insertAdjacentHTML('beforeend',d.items.map((m,i)=>card(m,i)).join(''));loadCovers(d.items);
+    const base=String(allState.key||'').replace(/^\?/,'');
+    const sq=new URLSearchParams(base).get('q');
+    let d;
+    if(sq&&window.SourceCatalog&&SourceCatalog.searchStream){
+      /* results appear as soon as each source answers; the slower ones keep loading in the background */
+      st.ctl=new AbortController();
+      const grid=$('#allGrid');let shown=grid.children.length;
+      grid.querySelectorAll('#srLoad').forEach(x=>x.remove());
+      grid.insertAdjacentHTML('beforeend','<p class="empty" id="srLoad" style="grid-column:1/-1">در حال جستجو…</p>');
+      if(lang==='en')applyInstant($('#srLoad'),'en');
+      try{
+        d=await SourceCatalog.searchStream(sq,st.page,12,items=>{
+          if(allState!==st||!items.length)return;
+          const ld=$('#srLoad');
+          const html=items.map((m,i)=>card(m,shown+i)).join('');
+          ld?ld.insertAdjacentHTML('beforebegin',html):grid.insertAdjacentHTML('beforeend',html);
+          shown+=items.length;loadCovers(items);
+          if(lang==='en')applyInstant(grid,'en');
+        },st.ctl.signal);
+      }catch(e){d=null}
+      const ld=$('#srLoad');if(ld)ld.remove();
+      if(allState!==st){st.loading=false;return}
+      if(!d||!d.items.length){
+        if(!shown){d=await api('/api/movies?q='+encodeURIComponent(sq)+'&limit=30&page='+st.page).catch(()=>({items:[],hasMore:false}));
+          $('#allGrid').insertAdjacentHTML('beforeend',d.items.map((m,i)=>card(m,i)).join(''));loadCovers(d.items);
+          if(!d.items.length)toast('نتیجه‌ای پیدا نشد')}
+        d=d||{items:[],hasMore:false};
+      }else if(SourceCatalog.local){
+        /* atlasmind rating / top quality come from the small local cache; patched in after the cards are visible */
+        const am=d.items.filter(m=>m.source==='atlasmind').map(m=>m.id);
+        if(am.length)SourceCatalog.local.summaries(am).then(map=>{
+          d.items.forEach(m=>{const l=map.get(m.id);if(!l)return;m.siteRating=l.siteRating||'';m.topQ=l.topQ||'';
+            $$('.c[data-id="'+CSS.escape(m.id)+'"]').forEach(el=>{const q=el.querySelector('.q');if(q&&!q.textContent)q.textContent=m.topQ;const b=el.querySelector('.bdg');if(b&&!b.textContent)b.textContent=m.siteRating})})}).catch(()=>{});
+      }
+    }else{
+      d=await fetchItems(base+(base.includes('page=')?'':'&page='+allState.page));
+      $('#allGrid').insertAdjacentHTML('beforeend',d.items.map((m,i)=>card(m,i)).join(''));loadCovers(d.items);
+    }
     allState.hasMore=d.hasMore;allState.page++;
     const old=$('#allMore');if(old)old.remove();
     if(allState.hasMore)$('#allGrid').insertAdjacentHTML('afterend','<button class="more" id="allMore" aria-label="بیشتر"><span class="mc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span><span>بیشتر</span></button>');
-  }catch(e){toast('خطا در بارگذاری فیلم ها',true)}
-  allState.loading=false;
+  }catch(e){if(allState===st)toast('خطا در بارگذاری فیلم ها',true)}
+  st.loading=false;
 }
 document.addEventListener('click',e=>{
   const m=e.target.closest('.more');if(m&&m.dataset.more){if(m.dataset.more==='rec'){openRecommendationsAll();return}openAll(m.dataset.more,'sort='+(m.dataset.more==='top'?'rating':'new')+'&limit=30');return}
@@ -918,6 +1044,32 @@ addEventListener('load',()=>$$('.scroll').forEach(fade));
 /* ---------- movie page (real data) ---------- */
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const QO=['4K','1080p','720p','480p'];
+/* Derive a short, distinct label from the download's real file name.
+   The source databases often give every file the same label ("دوبله فارسی"),
+   so quality/encoder/version are read from the file name instead. */
+const fileOf=l=>{
+  let f=String(l.name||l.fileName||'');
+  if(!f){try{f=decodeURIComponent(String(l.url||'').split(/[?#]/)[0].split('/').pop()||'')}catch(_){f=String(l.url||'').split('/').pop()||''}}
+  return f;
+};
+function niceLabel(l){
+  const f=fileOf(l);
+  const tags=[...new Set((f.match(/\[([^\]]+)\]/g)||[]).map(x=>x.slice(1,-1)))];
+  const toks=[...new Set((f.match(/WEB-?DL|BLURAY|BRRIP|HDTV|HDRIP|WEBRIP|X265|X264|10BIT|6CH|AAC|AC3|HEVC|FILM2MEDIA|PAHE|MIXFLIXTOP|ORIGINAL|UNCUT|\b\d?DUB\b|AUDIO|\bSS\b/gi)||[]).map(x=>x.toUpperCase().replace(/\s/g,'')))];
+  const has=(a,b)=>a.some(x=>b.test(x));
+  let ver='';
+  if(/farsi[\s._-]*(sub|hardsub)|sub[\s._-]*farsi|hardsub|زیرنویس|چسبیده/i.test(f))ver='زیرنویس فارسی چسبیده';
+  else if(/farsi[\s._-]*(dub|dubbed)|dub[\s._-]*farsi|dubbed|3dub|دوبله/i.test(f))ver='دوبله فارسی';
+  else if(/original|uncut|نسخه اصلی/i.test(f))ver='نسخه اصلی';
+  const skip=/^(4K|2160P|1080P|720P|480P|360P|540P|576P|2160|1080|720|480|360|540|576|FARSI|PERSIAN|DUB|DUBBED|SUB|SUBBED|HARDSUB|MKV|MP4|AVI|FILM2MEDIA)$/i;
+  const details=[];
+  tags.concat(toks).forEach(t=>{if(t&&!skip.test(t)&&!details.some(d=>d.toLowerCase()===t.toLowerCase()))details.push(t)});
+  if(!details.length){
+    const stem=f.replace(/\.[^.]+$/,'').replace(/(?:19|20)\d{2}/g,'').replace(/film2media/gi,' ').replace(/[\[\]()._-]+/g,' ').replace(/\s+/g,' ').trim();
+    if(stem)details.push(stem.split(' ').slice(0,5).join(' '));
+  }
+  return [ver,details.slice(0,4).join(' · ')].filter(Boolean).join(' · ')||l.label||'نسخه اصلی';
+}
 const CH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 const USER='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
 let currentMovie=null,enInfo={},flatLinks=[],prevView='home',mvIdx='';
@@ -946,9 +1098,10 @@ function episodeModel(m){
 }
 const linkIdx=m=>{if(!m._ix){m._ix=new Map();(m.links||[]).forEach((l,i)=>m._ix.set(l,i))}return m._ix};
 const sortLinks=ls=>ls.slice().sort((a,b)=>rankQ(a.q)-rankQ(b.q));
-const dlBtn=i=>`<button type="button" class="btn pri lg sm" data-i="${i}" aria-label="دانلود">${DL}<span class="lb">دانلود</span></button>`;
+const WATCH_SVG='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+const dlBtn=i=>`<span class="abs"><button type="button" class="btn sec lg sm" data-w="${i}" aria-label="تماشا">${WATCH_SVG}</button><button type="button" class="btn pri lg sm" data-i="${i}" aria-label="دانلود">${DL}</button></span>`;
 function lrow(m,l){
-  return `<div class="lr"><span class="nm"><span><b dir="ltr">${esc(l.q||'—')}</b> · <span dir="auto">${esc(l.label||'نسخه اصلی')}${l.folder?' · پوشه':''}</span></span>${l.size?`<small class="sz" dir="ltr">${esc(l.size)}</small>`:''}</span>${dlBtn(linkIdx(m).get(l))}</div>`;
+  return `<div class="lr"><span class="nm"><span><b dir="ltr">${esc(l.q||'—')}</b> · <span dir="auto">${esc(niceLabel(l))}${l.folder?' · پوشه':''}</span></span>${l.size?`<small class="sz" dir="ltr">${esc(l.size)}</small>`:''}</span>${dlBtn(linkIdx(m).get(l))}</div>`;
 }
 function epsHTML(m,em){
   if(dlS.season==null||!em.seasons.includes(dlS.season))dlS.season=em.seasons[0];
@@ -956,7 +1109,7 @@ function epsHTML(m,em){
   const sn=em.seasons.length>1?`<div class="seasons">${em.seasons.map(s=>`<button type="button" class="chip sn${s===dlS.season?' on':''}" data-s="${s}"><span>فصل</span>&nbsp;<span>${s}</span></button>`).join('')}</div>`:'';
   const rows=shown.map(e=>{
     const ls=sortLinks(e.links),qs=[...new Set(ls.map(l=>l.q))],open=dlS.open.has(e.key);
-    return `<div class="ep${open?' open':''}" data-k="${e.key}"><button type="button" class="ep-h" aria-expanded="${open}"><span class="en">${e.n}</span><span class="sub"><span>قسمت</span> <span>${e.n}</span> · <span dir="ltr">${esc(qs.join(' · '))}</span></span><span class="chev">${CH}</span></button><div class="ep-b">${ls.map(l=>lrow(m,l)).join('')}</div></div>`;
+    return `<div class="ep${open?' open':''}" data-k="${e.key}"><button type="button" class="ep-h" aria-expanded="${open}"><span class="en">${e.n}</span><span class="sub"><span>قسمت</span> <span>${e.n}</span> · <span dir="ltr">${esc(qs.join(' · '))}</span></span><span class="chev">${CH}</span></button><div class="ep-b" role="region"><div><div class="ep-bi">${ls.map(l=>lrow(m,l)).join('')}</div></div></div></div>`;
   }).join('');
   const more=cur.length>shown.length?`<button type="button" class="btn sec lg ldmore" id="dlMore"><span class="lb"><span>نمایش بیشتر</span> (${cur.length-shown.length})</span></button>`:'';
   const fo=em.folders.length?`<h4 class="fh">پوشه‌ی کامل فصل‌ها</h4><div class="eps">${sortLinks(em.folders).map(l=>lrow(m,l)).join('')}</div>`:'';
@@ -965,7 +1118,7 @@ function epsHTML(m,em){
 function qualityHTML(m){
   return buildGroups(m).map(([q,links],k)=>{
     const lim=dlS.gm[q]||80,shown=links.slice(0,lim),open=dlS.qopen.has(q);
-    const rows=shown.map(l=>`<div class="dr"><span class="nm"><span dir="auto">${esc(l.label||'نسخه اصلی')}${l.folder?' · پوشه':''}</span>${l.size?`<small class="sz" dir="ltr">${esc(l.size)}</small>`:''}</span>${dlBtn(l._i)}</div>`).join('');
+    const rows=shown.map(l=>`<div class="dr"><span class="nm"><span dir="auto">${esc(niceLabel(l))}${l.folder?' · پوشه':''}</span>${l.size?`<small class="sz" dir="ltr">${esc(l.size)}</small>`:''}</span>${dlBtn(l._i)}</div>`).join('');
     const more=links.length>shown.length?`<button type="button" class="btn sec lg ldmore" data-gm="${esc(q)}"><span class="lb"><span>نمایش بیشتر</span> (${links.length-shown.length})</span></button>`:'';
     return `<div class="acc${open?' open':''}" data-q="${esc(q)}" style="--c:var(--${QCOLOR[q]||'tl'});--i:${k}"><button type="button" class="acc-h" aria-expanded="${open}"><span class="qb" dir="ltr">${esc(q)}</span><span class="sub"><span>${esc(q.includes('p')?q+' کیفیت':q)}</span> · <span>${links.length}</span> <span>نسخه</span></span><span class="chev">${CH}</span></button><div class="acc-b" role="region"><div><div class="rows">${rows}${more}</div></div></div></div>`;
   }).join('');
@@ -984,7 +1137,9 @@ function rerenderDl(){
 }
 $('#accs').addEventListener('click',e=>{
   const m=currentMovie;if(!m)return;
-  const db=e.target.closest('.lr .btn,.dr .btn');
+  const wb=e.target.closest('[data-w]');
+  if(wb){const l=m.links[+wb.dataset.w];if(l){const q=QO.includes(l.q)?l.q:'720p';openPlayer({...m,multi:false,eps:[{n:l.ep||1,s:l.season||1,src:{[q]:l.url}}]})}return}
+  const db=e.target.closest('[data-i]');
   if(db){const l=m.links[+db.dataset.i];if(l)triggerDownload(l.url);return}
   const sn=e.target.closest('.sn');if(sn){dlS.season=+sn.dataset.s;dlS.shown=80;rerenderDl();return}
   if(e.target.closest('#dlMore')){dlS.shown+=80;rerenderDl();return}
@@ -1038,7 +1193,17 @@ const enrichKey=m=>[m.titleEn||m.title,m.year,m.type].join('|').toLowerCase();
 /* ENRICH holds the in-flight request, ENR the finished data (the trailer button reads ENR) */
 function loadEnrich(m){
   const k=enrichKey(m);
-  if(!ENRICH.has(k))ENRICH.set(k,api('/api/enrich?q='+encodeURIComponent(m.titleEn||m.title)+'&year='+encodeURIComponent(m.year||'')+'&type='+encodeURIComponent(m.type||'movie')).then(d=>{ENR.set(k,d);return d}).catch(e=>{ENRICH.delete(k);throw e}));
+  if(!ENRICH.has(k)){
+    /* live source items already carry synopsis / poster / rating */
+    if(m.plot&&m.poster){
+      const d={plot:m.plot,poster:m.poster,backdrop:m.backdrop||'',rating:m.siteRating||m.rating||'',
+        ratingLabel:m.ratingLabel||'IMDb',imdb:m.imdb||'',vote:m.vote||'',year:m.year||'',
+        sources:[m.source||'source'],trailer:null};
+      ENR.set(k,d);ENRICH.set(k,Promise.resolve(d));
+    }else{
+      ENRICH.set(k,(window.SourceMeta?SourceMeta.get(m,true):Promise.resolve(null)).then(d=>{if(d)ENR.set(k,d);return d}).catch(e=>{ENRICH.delete(k);throw e}));
+    }
+  }
   return ENRICH.get(k);
 }
 function trailerURL(info,auto){return info&&info.trailer&&info.trailer.embed?(info.trailer.embed+(auto?'&mute=1':'')):''}
@@ -1061,7 +1226,8 @@ async function openMovie(id,toDl){
   currentMovie=m;mvIdx=id;dlS=newDl();
   const cv=COVERS.get(id);
   $('#mvTitle').textContent=m.title||m.titleEn||'';
-  $('#mvImdb').textContent=(cv&&cv.imdb)||'—';
+  $('#mvImdb').textContent=(cv&&(cv.rating||cv.imdb||cv.vote))||'—';
+  $('#mvRateLabel').textContent=(cv&&cv.ratingLabel)||'IMDb';
   $('#mvYear').textContent=m.year||(cv&&cv.year)||'—';
   $('#mvGenre').textContent=m.genre||m.type||'';
   $('.mvposter').innerHTML=posterBG(m)+coverImg(cv&&cv.poster)+`<span class="q" id="mvQ">${esc(m.topQ||'')}</span>`;
@@ -1069,19 +1235,18 @@ async function openMovie(id,toDl){
   sum.classList.remove('open');sumb.setAttribute('aria-expanded','false');
   $('#accs').innerHTML=accHTML(m);
   cms[id]=getCms(id);renderCms();$('#cmText').value='';
-  stopTrailer();$('#enrichNote').hidden=true;
+  stopTrailer();
   setTab('dl');
   if(lang==='en')applyInstant($('#v-movie'),'en');
   go('movie',tabs[0]).then(()=>{chkSum();if(toDl)setTimeout(toBox,60)});
   try{
     const info=await loadEnrich(m);enInfo=info;
     if(!currentMovie||currentMovie.id!==id)return;
-    const r=info.imdb||info.vote;if(r)$('#mvImdb').textContent=r;
+    const r=info.rating||info.imdb||info.vote;
+    if(r){$('#mvImdb').textContent=r;$('#mvRateLabel').textContent=info.ratingLabel||'IMDb'}
     if(info.year)$('#mvYear').textContent=info.year;
     if(info.plot){sum.textContent=info.plot;chkSum()}
     if(info.poster){const pe=$('.mvposter');if(!pe.querySelector('.cov')){const bg=pe.querySelector('.posterbg');bg&&bg.insertAdjacentHTML('afterend',coverImg(info.poster))}}
-    $('#enrichNote').hidden=false;
-    $('#enrichNote').textContent=(info.sources||[]).length?('اطلاعات از: '+(info.sources||[]).join(' · ')+(info.trailer?' · تریلر موجود است':'')):'اطلاعات تکمیلی در دسترس نیست';
     /* choosing a cover plays its trailer automatically when "پخش خودکار تریلر" is on */
     if(info.trailer&&$('#autoTrailer').checked&&!toDl)showTrailer(id,true);
   }catch(_){}
@@ -1090,8 +1255,10 @@ $('#mvBack').onclick=()=>go(prevView,tabs.find(t=>t.dataset.v===prevView)||tabs[
 $('#mvTrailer').onclick=()=>showTrailer(currentMovie&&currentMovie.id);
 
 function heroMeta(m,info){
-  const r=(info&&(info.imdb||info.vote))||'',y=m.year||(info&&info.year)||'';
-  $('#heroMeta').innerHTML=(r?`<span class="imdb" dir="ltr"><b>IMDb</b>${STAR}<span>${esc(r)}</span><small>/10</small></span>`:'')+(y?`<span class="yr"><span class="k">سال ساخت</span><span>${esc(y)}</span></span>`:'');
+  const r=(info&&(info.rating||info.imdb||info.vote))||'',y=m.year||(info&&info.year)||'';
+  const label=(info&&info.ratingLabel)||'IMDb';
+  const suffix=/%/.test(r)?'':'/10';
+  $('#heroMeta').innerHTML=(r?`<span class="imdb" dir="ltr"><b>${esc(label)}</b>${STAR}<span>${esc(r)}</span><small>${suffix}</small></span>`:'')+(y?`<span class="yr"><span class="k">سال ساخت</span><span>${esc(y)}</span></span>`:'');
 }
 /* the featured image is always the hero BACKGROUND; if no picture exists a generated gradient is used */
 function setHeroBg(url,m){
@@ -1110,22 +1277,33 @@ function paintHero(fm,info,image){
   heroMeta(fm,info);
   setHeroBg(image||(info&&(info.backdrop||info.poster))||'',fm);
 }
+/* the daily featured title is picked in the browser; its metadata (summary,
+   rating, year, image) is fetched from the source sites by SourceMeta too. */
+let featuredPoolPromise=null;
+function dailyPool(){
+  if(!featuredPoolPromise){
+    featuredPoolPromise=(window.SourceCatalog?SourceCatalog.latest(1,60).then(d=>d.items||[]):Promise.reject(new Error('no catalog')))
+      .catch(()=>api('/api/movies?type=movie&sort=links&limit=60').then(d=>d.items||[]).catch(()=>[]))
+      .then(items=>{const movies=items.filter(m=>m.type==='movie');return movies.length?movies:items});
+  }
+  return featuredPoolPromise;
+}
+function dailyPick(pool){
+  const day=new Date(Date.now()+3.5*3600*1000).toISOString().slice(0,10);
+  let h=2166136261;
+  for(const c of day+'|lookmv-featured'){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}
+  return pool[(h>>>0)%pool.length];
+}
 async function loadFeatured(){
   try{
-    /* the server resolves summary, rating, year and the background image itself */
-    const d=await api('/api/featured'),fm=d.movie;featuredMovie=fm;
+    const fm=dailyPick(await dailyPool());
     if(!fm)return;
-    SUMMARIES.set(fm.id,fm);
+    featuredMovie=fm;SUMMARIES.set(fm.id,fm);
     $('#heroTitle').textContent=fm.title||fm.titleEn||'';
     $('#heroSum').textContent=(fm.genres&&fm.genres.join(' · '))||'یک فیلم به صورت تصادفی هر ۲۴ ساعت انتخاب می شود.';
     heroMeta(fm,null);
-    if(d.info){
-      const k=enrichKey(fm);ENR.set(k,d.info);ENRICH.set(k,Promise.resolve(d.info));
-      paintHero(fm,d.info,d.image);
-    }else{
-      setHeroBg('',fm);
-      loadEnrich(fm).then(info=>paintHero(fm,info,'')).catch(()=>{});
-    }
+    setHeroBg('',fm);
+    loadEnrich(fm).then(info=>{if(info)paintHero(fm,info,'')}).catch(()=>{});
   }catch(e){$('#heroTitle').textContent='lookmv';$('#heroSum').textContent='برای بارگذاری فیلم ها وارد شوید.'}
 }
 /* featured: «تماشا» goes straight to the watch list (episode list for a series), «دانلود» enters the movie page */
@@ -1151,7 +1329,7 @@ let searchT;
 $('#q').addEventListener('input',e=>{
   clearTimeout(searchT);const v=e.target.value.trim();
   if(!v)return;
-  searchT=setTimeout(()=>openAll('search','?q='+encodeURIComponent(v)+'&limit=30','نتایج جستجو: '+v),500);
+  searchT=setTimeout(()=>openAll('search','?q='+encodeURIComponent(v)+'&limit=30','نتایج جستجو: '+v),280);
 });
 
 /* ---------- locks: zoom + copy outside inputs ---------- */
@@ -1169,7 +1347,7 @@ const pl=document.createElement('div');pl.className='pl';pl.hidden=true;pl.dir='
 const pb=(id,k,l)=>`<button class="pib" id="${id}" aria-label="${l}">${PI[k]}</button>`;
 pl.innerHTML=`<video id="plV" playsinline preload="metadata"></video><div class="plt">${pb('plX','x','بستن')}<div class="plh"><b id="plT"></b><small id="plS"></small></div></div><button class="plbig" id="plBig" tabindex="-1" aria-hidden="true"></button><div class="plc"><div class="seek" id="plSk"><i class="buf" id="plBuf"></i><i class="pr" id="plPr"></i><u id="plKn"></u></div><div class="plr">${pb('plPP','play','پخش')}${pb('plPv','prev','قسمت قبلی')}${pb('plNx','next','قسمت بعدی')}<span class="tm" id="plTm">0:00 / 0:00</span><i class="sp"></i>${pb('plMu','vol','صدا')}${pb('plEp','list','لیست قسمت‌ها')}${pb('plSt','gear','تنظیمات')}${pb('plFs','fs','تمام‌صفحه')}</div></div><div class="pm" id="plM" hidden></div><aside class="pls" id="plL" hidden><h3><span>انتخاب قسمت</span></h3><div class="li" id="plLi"></div></aside>`;
 document.body.appendChild(pl);
-const V=$('#plV'),P={m:null,ep:0,auto:true,cur:'1080p',sp:1,st:[],t0:0,it:0};
+const V=$('#plV'),P={m:null,ep:0,season:null,auto:true,cur:'1080p',sp:1,st:[],t0:0,it:0};
 const E=()=>P.m.eps[P.ep],AV=()=>QO.filter(q=>E().src[q]),pk=()=>pl.classList.contains('pick'),tr=()=>{if(lang==='en')applyInstant(pl,'en')};
 const ptm=t=>{t=Math.max(0,t|0);const h=t/3600|0,m=(t%3600)/60|0,s=t%60;return(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s).padStart(2,'0')};
 /* auto quality: connection speed + screen size decide the start level; stalls step down, a long healthy buffer steps up */
@@ -1178,10 +1356,17 @@ const autoQ=()=>{const c=navigator.connection,d=c&&c.saveData?1:c&&c.downlink,w=
 const sl=e=>P.m.multi?`<span dir="ltr">S${e.s}</span> `:'';
 const info=()=>{$('#plS').innerHTML=(P.m.eps.length>1?`${sl(E())}<span>قسمت</span> <span>${E().n}</span> · `:'')+`<span dir="ltr">${P.cur}</span>`+(P.auto?' <span>خودکار</span>':'');tr()};
 function src(q,t,play){P.cur=q;P.t0=Date.now();V.src=E().src[q];V.playbackRate=P.sp;V.addEventListener('loadedmetadata',()=>{if(t)V.currentTime=t},{once:true});if(play)V.play().catch(()=>{});info()}
-function list(){$('#plLi').innerHTML=P.m.eps.map((e,i)=>`<button class="ei${!pk()&&i===P.ep?' on':''}" data-i="${i}"><b>${e.n}</b><span>${sl(e)}<span>قسمت</span> <span>${e.n}</span></span></button>`).join('');$('#plL').dir=document.documentElement.dir;tr()}
+function list(){
+  const seasons=[...new Set(P.m.eps.map(e=>e.s))];
+  if(!seasons.includes(P.season))P.season=seasons[0];
+  const chips=P.m.multi&&seasons.length>1?`<div class="plseasons">${seasons.map(s=>`<button class="ps${s===P.season?' on':''}" data-s="${s}">فصل ${s}</button>`).join('')}</div>`:'';
+  const rows=P.m.eps.map((e,i)=>({e,i})).filter(x=>!P.m.multi||x.e.s===P.season)
+    .map(({e,i})=>`<button class="ei${!pk()&&i===P.ep?' on':''}" data-i="${i}"><b>${e.n}</b><span>${sl(e)}<span>قسمت</span> <span>${e.n}</span></span></button>`).join('');
+  $('#plLi').innerHTML=chips+rows;$('#plL').dir=document.documentElement.dir;tr();
+}
 function nav(){const n=P.m.eps.length;$('#plEp').hidden=n<2;$('#plPv').hidden=$('#plNx').hidden=n<2;$('#plPv').disabled=P.ep<1;$('#plNx').disabled=P.ep>=n-1}
 function start(i){P.ep=i;pl.classList.remove('pick');$('#plL').hidden=$('#plM').hidden=true;P.st=[];if(P.auto||!E().src[P.cur])P.auto=true,P.cur=autoQ();src(P.cur,0,true);list();nav();wake()}
-function openPlayer(m){P.m=m;P.auto=true;V.removeAttribute('src');$('#plT').textContent=m.title;pl.hidden=false;document.body.style.overflow='hidden';nav();
+function openPlayer(m){P.m=m;P.season=null;P.auto=true;V.removeAttribute('src');$('#plT').textContent=m.title;pl.hidden=false;document.body.style.overflow='hidden';nav();
   if(m.eps.length>1){pl.classList.add('pick');P.ep=-1;$('#plS').textContent='';list();$('#plL').hidden=false}else{P.ep=0;start(0)}tr();$('#plX').focus()}
 function closePlayer(){V.pause();V.removeAttribute('src');V.load();clearTimeout(P.it);if(document.fullscreenElement)document.exitFullscreen();pl.hidden=true;pl.classList.remove('idle');document.body.style.overflow=''}
 function wake(){pl.classList.remove('idle');clearTimeout(P.it);if(!V.paused&&$('#plM').hidden&&!pk())P.it=setTimeout(()=>pl.classList.add('idle'),2800)}
@@ -1199,7 +1384,7 @@ V.ondblclick=fs;
 $('#plX').onclick=closePlayer;$('#plPP').onclick=()=>V.paused?V.play():V.pause();$('#plPv').onclick=()=>start(P.ep-1);$('#plNx').onclick=()=>start(P.ep+1);$('#plMu').onclick=()=>V.muted=!V.muted;$('#plFs').onclick=fs;
 $('#plEp').onclick=()=>{$('#plM').hidden=true;const L=$('#plL');L.hidden=!L.hidden;wake()};
 $('#plSt').onclick=()=>{$('#plL').hidden=true;const M=$('#plM');if(M.hidden)menu();M.hidden=!M.hidden;wake()};
-$('#plLi').onclick=e=>{const b=e.target.closest('.ei');if(b)start(+b.dataset.i)};
+$('#plLi').onclick=e=>{const s=e.target.closest('.ps');if(s){P.season=+s.dataset.s;list();return}const b=e.target.closest('.ei');if(b)start(+b.dataset.i)};
 $('#plM').onclick=e=>{const b=e.target.closest('.mi');if(!b)return;if(b.dataset.s){P.sp=+b.dataset.s;V.playbackRate=P.sp}else if(b.dataset.q==='auto'){P.auto=true;const q=autoQ();q!==P.cur?src(q,V.currentTime,!V.paused):info()}else{P.auto=false;b.dataset.q!==P.cur?src(b.dataset.q,V.currentTime,!V.paused):info()}menu()};
 const sk=$('#plSk');let dr=0;const sv=e=>{const r=sk.getBoundingClientRect();if(V.duration)V.currentTime=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))*V.duration};
 sk.addEventListener('pointerdown',e=>{dr=1;sk.classList.add('d');sk.setPointerCapture(e.pointerId);sv(e)});sk.addEventListener('pointermove',e=>{if(dr)sv(e)});['pointerup','pointercancel'].forEach(t=>sk.addEventListener(t,()=>{dr=0;sk.classList.remove('d')}));
