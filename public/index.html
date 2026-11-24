@@ -1093,21 +1093,39 @@ function heroMeta(m,info){
   const r=(info&&(info.imdb||info.vote))||'',y=m.year||(info&&info.year)||'';
   $('#heroMeta').innerHTML=(r?`<span class="imdb" dir="ltr"><b>IMDb</b>${STAR}<span>${esc(r)}</span><small>/10</small></span>`:'')+(y?`<span class="yr"><span class="k">سال ساخت</span><span>${esc(y)}</span></span>`:'');
 }
+/* the featured image is always the hero BACKGROUND; if no picture exists a generated gradient is used */
+function setHeroBg(url,m){
+  const h=$('#v-home .hero');
+  const grad=()=>{const x=hashCode((m&&(m.id||m.title))||'x'),a=x%360,b=(a+40+x%80)%360;return `linear-gradient(145deg,hsl(${a} 62% 34%),hsl(${b} 58% 14%))`};
+  const apply=v=>{h.style.setProperty('--hero-img',v);h.classList.add('hasimg')};
+  if(!url){apply(grad());return}
+  const im=new Image();
+  im.onload=()=>apply('url("'+url.replace(/"/g,'%22')+'")');
+  im.onerror=()=>{if(!h.classList.contains('hasimg'))apply(grad())};
+  im.src=url;
+}
+function paintHero(fm,info,image){
+  if(!featuredMovie||featuredMovie.id!==fm.id)return;
+  if(info&&info.plot)$('#heroSum').textContent=info.plot;
+  heroMeta(fm,info);
+  setHeroBg(image||(info&&(info.backdrop||info.poster))||'',fm);
+}
 async function loadFeatured(){
   try{
+    /* the server resolves summary, rating, year and the background image itself */
     const d=await api('/api/featured'),fm=d.movie;featuredMovie=fm;
     if(!fm)return;
     SUMMARIES.set(fm.id,fm);
     $('#heroTitle').textContent=fm.title||fm.titleEn||'';
     $('#heroSum').textContent=(fm.genres&&fm.genres.join(' · '))||'یک فیلم به صورت تصادفی هر ۲۴ ساعت انتخاب می شود.';
     heroMeta(fm,null);
-    loadEnrich(fm).then(info=>{
-      if(!featuredMovie||featuredMovie.id!==fm.id)return;
-      if(info.plot)$('#heroSum').textContent=info.plot;
-      heroMeta(fm,info);
-      const img=info.backdrop||info.poster;
-      if(img){const h=$('#v-home .hero'),im=new Image();im.referrerPolicy='no-referrer';im.onload=()=>{h.style.setProperty('--hero-img','url("'+img.replace(/"/g,'%22')+'")');h.classList.add('hasimg')};im.src=img}
-    }).catch(()=>{});
+    if(d.info){
+      const k=enrichKey(fm);ENR.set(k,d.info);ENRICH.set(k,Promise.resolve(d.info));
+      paintHero(fm,d.info,d.image);
+    }else{
+      setHeroBg('',fm);
+      loadEnrich(fm).then(info=>paintHero(fm,info,'')).catch(()=>{});
+    }
   }catch(e){$('#heroTitle').textContent='lookmv';$('#heroSum').textContent='برای بارگذاری فیلم ها وارد شوید.'}
 }
 /* featured: «تماشا» goes straight to the watch list (episode list for a series), «دانلود» enters the movie page */

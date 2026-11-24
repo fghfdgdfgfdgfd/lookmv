@@ -323,6 +323,7 @@ async function getJSON(url, timeout = 6500) {
   } finally { clearTimeout(t); }
 }
 function posterTMDB(p) { return p ? 'https://image.tmdb.org/t/p/w500' + p : ''; }
+function backdropTMDB(p) { return p ? 'https://image.tmdb.org/t/p/w1280' + p : ''; }
 function youtube(key) {
   return key ? {
     key,
@@ -346,7 +347,7 @@ async function enrichFromTMDb(title, year, isTV) {
     year: String(detail.release_date || detail.first_air_date || '').slice(0, 4),
     plot: detail.overview || '',
     poster: posterTMDB(detail.poster_path),
-    backdrop: posterTMDB(detail.backdrop_path),
+    backdrop: backdropTMDB(detail.backdrop_path),
     genres: (detail.genres || []).map(g => g.name),
     vote: detail.vote_average ? Number(detail.vote_average).toFixed(1) : '',
     trailer: youtube(trailer?.key),
@@ -466,7 +467,102 @@ function coverFor(m) {
   }
   return coverJobs.get(k);
 }
-const pickCover = d => d ? { poster: d.poster || '', backdrop: d.backdrop || '', imdb: d.imdb || d.vote || '', year: d.year || '' } : null;
+
+/* ------------------- image proxy: the SERVER downloads images -------------------
+ * The browser never contacts TMDb / Amazon / MyAnimeList / TVmaze etc. Every poster
+ * or backdrop URL we hand to the client is rewritten to /img/<id>. The server fetches
+ * the original once, keeps it on disk (STORAGE_DIR/img-cache) and serves it from there.
+ * Only URLs that the server itself registered can be fetched, so this is not an open proxy. */
+const IMG_DIR = path.join(STORAGE, 'img-cache');
+fs.mkdirSync(IMG_DIR, { recursive: true });
+const IMG_URLS = new Map();          // id -> [primary url, ...fallback urls]
+const IMG_MAX = 8 * 1024 * 1024;
+const IMG_TTL = 30 * DAY;
+const imgJobs = new Map();
+const privateHost = h => /^(localhost|.*\.local|.*\.internal)$/i.test(h) || h === '::1' || h === '[::1]'
+  || /^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h);
+function imgUrl(u, alts = []) {
+  if (!u || typeof u !== 'string') return '';
+  if (u.startsWith('/img/')) return u;
+  const list = [];
+  for (const x of [u, ...alts]) {
+    try {
+      const p = new URL(String(x).startsWith('//') ? 'https:' + x : x);
+      if (/^https?:$/.test(p.protocol) && !privateHost(p.hostname)) list.push(p.href);
+    } catch { /* skip */ }
+  }
+  if (!list.length) return '';
+  const id = crypto.createHash('sha1').update(list[0]).digest('hex').slice(0, 24);
+  IMG_URLS.set(id, list);
+  return '/img/' + id;
+}
+/* IMDb/Amazon posters come as ..._SX300.jpg; ask for a bigger one when used as a hero background */
+const bigImg = u => String(u || '').replace(/(m\.media-amazon\.com\/.*\._V1_)[^.\/]*(\.\w+)$/, '$1SX1200$2');
+const imgPath = id => path.join(IMG_DIR, id);
+function readImgCache(id, allowStale) {
+  try {
+    const st = fs.statSync(imgPath(id) + '.img');
+    if (!allowStale && Date.now() - st.mtimeMs > IMG_TTL) return null;
+    return { buf: fs.readFileSync(imgPath(id) + '.img'), type: fs.readFileSync(imgPath(id) + '.type', 'utf8') };
+  } catch { return null; }
+}
+async function downloadImage(url) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const r = await fetch(url, { signal: ctl.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; lookmv/1.0)', Accept: 'image/*' } });
+    if (!r.ok) return null;
+    const type = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!/^image\/(jpeg|png|webp|gif|avif)$/.test(type)) return null;
+    if (Number(r.headers.get('content-length') || 0) > IMG_MAX) return null;
+    const buf = Buffer.from(await r.arrayBuffer());
+    return buf.length && buf.length <= IMG_MAX ? { buf, type } : null;
+  } catch { return null; } finally { clearTimeout(t); }
+}
+function getImage(id) {
+  const hit = readImgCache(id, false);
+  if (hit) return Promise.resolve(hit);
+  const urls = IMG_URLS.get(id);
+  if (!urls) return Promise.resolve(readImgCache(id, true));      // unknown after a restart: serve disk copy if any
+  if (imgJobs.has(id)) return imgJobs.get(id);
+  const job = (async () => {
+    for (const url of urls) {
+      const got = await downloadImage(url);
+      if (!got) continue;
+      try {
+        fs.writeFileSync(imgPath(id) + '.type.tmp', got.type); fs.renameSync(imgPath(id) + '.type.tmp', imgPath(id) + '.type');
+        fs.writeFileSync(imgPath(id) + '.img.tmp', got.buf);   fs.renameSync(imgPath(id) + '.img.tmp', imgPath(id) + '.img');
+      } catch (e) { console.warn('[img] cache write failed:', e.message); }
+      return got;
+    }
+    return readImgCache(id, true);                                  // origin down: serve a stale copy if we have one
+  })().finally(() => imgJobs.delete(id));
+  imgJobs.set(id, job);
+  return job;
+}
+const within = (ms, p) => Promise.race([p, new Promise(ok => setTimeout(() => ok(null), ms))]);
+
+/* what the client may see: same data, but images point at our own /img/ endpoint */
+const publicInfo = d => d ? { ...d, poster: imgUrl(d.poster), backdrop: imgUrl(d.backdrop) } : d;
+const pickCover = d => d ? { poster: imgUrl(d.poster), backdrop: imgUrl(d.backdrop), imdb: d.imdb || d.vote || '', year: d.year || '' } : null;
+
+/* featured movie: summary + rating + year + background image resolved on the server in one response */
+async function featuredFull() {
+  const f = featured();
+  const m = BY_ID.get(f.movie.id);
+  f.info = null; f.image = '';
+  if (!m) return f;
+  const info = await within(6000, enrich(m.titleEn || m.title, m.year || '', m.type || 'movie').catch(() => null));
+  if (!info) return f;
+  f.info = publicInfo(info);
+  const raw = info.backdrop || info.poster;
+  if (raw) {
+    const url = imgUrl(raw === info.poster ? bigImg(raw) : raw, [raw]);
+    const id = url.slice(5);
+    if (await within(5000, getImage(id))) f.image = url;   // only send it once it is really on our disk
+  }
+  return f;
+}
 
 /* ------------------------------- HTTP -------------------------------- */
 function json(res, code, body) {
@@ -595,11 +691,11 @@ async function api(req, res, u) {
     }));
     return json(res, 200, { covers: out, pending });
   }
-  if (p === '/api/featured') return json(res, 200, featured());
+  if (p === '/api/featured') return json(res, 200, await featuredFull());
   if (p === '/api/enrich') {
     const title = String(u.searchParams.get('q') || '').trim();
     if (!title) return json(res, 400, { error: 'missing q' });
-    return json(res, 200, await enrich(title, u.searchParams.get('year') || '', u.searchParams.get('type') || 'movie'));
+    return json(res, 200, publicInfo(await enrich(title, u.searchParams.get('year') || '', u.searchParams.get('type') || 'movie')));
   }
   return json(res, 404, { error: 'unknown endpoint' });
 }
@@ -608,6 +704,15 @@ const server = http.createServer(async (req, res) => {
   try {
     const u = new URL(req.url, 'http://' + (req.headers.host || 'localhost'));
     if (u.pathname === '/health') return json(res, 200, { ok: true });
+    if (u.pathname.startsWith('/img/')) {
+      if (!sessionUser(req)) return json(res, 401, { error: 'unauthorized' });
+      const id = u.pathname.slice(5);
+      if (!/^[a-f0-9]{24}$/.test(id)) return json(res, 404, { error: 'not found' });
+      const img = await getImage(id);
+      if (!img) return json(res, 404, { error: 'not found' });
+      res.writeHead(200, { 'Content-Type': img.type, 'Content-Length': img.buf.length, 'Cache-Control': 'private, max-age=604800', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(img.buf);
+    }
     if (u.pathname.startsWith('/api/')) return await api(req, res, u);
     const name = u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname.slice(1));
     return file(res, name);
@@ -622,4 +727,5 @@ server.listen(PORT, HOST, () => {
   console.log(`API config: ${CONFIG_FILE}`);
   // Warm the once-per-day lists without delaying the HTTP listener.
   setTimeout(() => refreshHomeFeed().catch(e => console.warn('[home-feed] warmup failed:', e.message)), 1200).unref();
+  setTimeout(() => featuredFull().catch(e => console.warn('[featured] warmup failed:', e.message)), 2500).unref();
 });
