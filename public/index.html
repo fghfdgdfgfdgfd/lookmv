@@ -28,8 +28,9 @@ html.swp .nav,html.swp .links,html.swp .dl,html.swp .bm{-webkit-backdrop-filter:
 .nav,.links{transition:backdrop-filter 1.4s var(--spring),-webkit-backdrop-filter 1.4s var(--spring)}
 html.theming :not(#theme):not(#theme *){transition:none!important}
 *{box-sizing:border-box;margin:0}
-html{scroll-behavior:smooth;touch-action:pan-x pan-y;-webkit-text-size-adjust:100%}
-body{background:var(--bg);color:var(--tx);font:16px/1.5 Vazirmatn,system-ui,sans-serif;min-height:100dvh;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
+html{scroll-behavior:smooth;touch-action:pan-x pan-y;-webkit-text-size-adjust:100%;overflow-x:hidden;overflow-x:clip;overscroll-behavior-x:none;max-width:100%}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.5 Vazirmatn,system-ui,sans-serif;min-height:100dvh;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden;overflow-x:clip;overscroll-behavior-x:none;max-width:100%;position:relative}
 input{-webkit-user-select:text;user-select:text}
 a{color:var(--tx);text-decoration:none}
 button{font:inherit;color:inherit}
@@ -450,7 +451,7 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
     <button class="ni" role="tab" aria-selected="false" aria-label="لیست من" data-v="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4z"/></svg><span class="lb">لیست من</span></button>
   </nav>
   <div class="tools">
-    <label for="q" style="position:absolute;left:-9999px">جستجو</label>
+    <label for="q" class="sr">جستجو</label>
     <input id="q" class="inp" placeholder="جستجو..." autocomplete="off">
     <button class="ni" id="theme" aria-label="تغییر تم"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="moon"><path fill="currentColor" fill-opacity=".2" d="M20.5 14.2A8.5 8.5 0 019.8 3.5a8.5 8.5 0 1010.7 10.7z"/><path d="M17.5 3v3M16 4.5h3"/></g><g class="sun"><circle cx="12" cy="12" r="4.2" fill="currentColor" fill-opacity=".2"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6L6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/></g></svg><span class="lb">تغییر تم</span></button>
     <button class="ni" id="lang" aria-label="تغییر زبان"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor" fill-opacity=".14"/><path d="M3 12h18M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9S9.4 5.7 12 3z"/></svg><span class="lb">English</span></button>
@@ -554,7 +555,7 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
   <div class="mpanel" id="p-dl" role="tabpanel"><div class="accs" id="accs"></div></div>
   <div class="mpanel" id="p-cm" role="tabpanel" hidden>
     <div class="cf">
-      <label for="cmText" style="position:absolute;left:-9999px">نظر خود را بنویسید...</label>
+      <label for="cmText" class="sr">نظر خود را بنویسید...</label>
       <textarea class="ta" id="cmText" placeholder="نظر خود را بنویسید..."></textarea>
       <button class="btn pri lg" id="cmSend" aria-label="ارسال نظر"><span class="lb">ارسال نظر</span></button>
     </div>
