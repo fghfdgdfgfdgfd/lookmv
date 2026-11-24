@@ -16,7 +16,6 @@ COPY data/movies.json ./data/movies.json
 # Railway can mount a persistent volume here without hiding the read-only catalog.
 RUN mkdir -p /app/storage \
     && chown -R node:node /app
-VOLUME ["/app/storage"]
 
 USER node
 EXPOSE 3000
