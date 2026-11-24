@@ -19,7 +19,6 @@ RUN mkdir -p /app/storage \
     && chown -R node:node /app \
     && chmod +x /app/docker-entrypoint.sh
 
-VOLUME ["/app/storage"]
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
