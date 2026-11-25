@@ -38,7 +38,7 @@ if (!sessions.sessions || typeof sessions.sessions !== 'object') sessions = { se
 if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, JSON.stringify(store));
 if (!fs.existsSync(SESSIONS_FILE)) fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions));
 let cache = readJSON(CACHE_FILE, {});
-let config = readJSON(CONFIG_FILE, { omdbKey: '', tmdbKey: '', youtubeFallback: true });
+let config = readJSON(CONFIG_FILE, { omdbKey: '', tmdbKey: '', youtubeFallback: false });
 // Railway and other container hosts should provide secrets as environment variables.
 config.tmdbKey = process.env.TMDB_API_KEY || process.env.TMDB_KEY || config.tmdbKey || '';
 config.omdbKey = process.env.OMDB_API_KEY || process.env.OMDB_KEY || config.omdbKey || '';
@@ -133,6 +133,228 @@ for (const m of MOVIES) {
     }
   }
 }
+
+/* ------------------------------ subtitles ------------------------------ */
+/* Some catalog entries carry separate .ass/.srt files next to the videos.
+ * Mark them so the player never mistakes a subtitle for a video source. */
+const SUB_EXT_RE = /\.(srt|ssa|ass|vtt)$/i;
+const VIDEO_EXT_RE = /\.(mkv|mp4|avi|webm|mov|m4v)$/i;
+const CATALOG_HOSTS = new Set();
+for (const m of MOVIES) {
+  for (const l of m.links || []) {
+    const clean = String(l.url || '').split(/[?#]/)[0];
+    if (SUB_EXT_RE.test(clean)) l.sub = true;
+    try { CATALOG_HOSTS.add(new URL(l.url).hostname.toLowerCase()); } catch { /* ignore */ }
+  }
+}
+
+const SUB_MAX = 8 * 1024 * 1024;
+const SUB_TTL = 6 * 3600000;
+const SUB_MISS_TTL = 10 * 60000;
+const subCache = new Map();
+const subMiss = new Map();
+
+function allowedSubtitleHost(host) {
+  host = String(host || '').toLowerCase();
+  if (!host) return false;
+  if (/^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$)/i.test(host)) return false;
+  if (CATALOG_HOSTS.has(host)) return true;
+  return /(^|\.)hollowofthealley\.space$/i.test(host) || /(^|\.)animex\.pro$/i.test(host);
+}
+
+/* The live animex API exposes only the MKV files. Their separate subtitles,
+ * when the uploader provided them, live in a "sub" folder next to the quality
+ * folders and follow the "<series> - <episode>.ass" naming pattern. */
+function subtitleCandidates(raw) {
+  let u; try { u = new URL(raw); } catch { return []; }
+  if (!/^https?:$/.test(u.protocol)) return [];
+  let decoded = u.pathname;
+  try { decoded = decodeURIComponent(u.pathname); } catch { /* keep raw */ }
+  if (SUB_EXT_RE.test(decoded)) return [u.href];
+  if (!VIDEO_EXT_RE.test(decoded)) return [];
+  const segs = u.pathname.split('/').filter(Boolean).map(s => {
+    try { return decodeURIComponent(s); } catch { return s; }
+  });
+  const ep = parseEpisode(segs[segs.length - 1] || '');
+  if (!ep) return [];
+  let qi = -1;
+  for (let i = segs.length - 2; i >= 0; i--) {
+    if (/^(?:2160p?|1080p?|720p?|480p?|360p?|4k|uhd)(?:[ _-].*)?$/i.test(segs[i])) { qi = i; break; }
+  }
+  if (qi < 1) return [];
+  const root = segs.slice(0, qi);
+  const series = root[root.length - 1] || '';
+  if (!series) return [];
+  const n = ep.ep;
+  const nums = [...new Set([String(n).padStart(2, '0'), String(n)])];
+  const names = [];
+  for (const num of nums) {
+    names.push(
+      `${series} - ${num}.ass`,
+      `${series} - ${num}.srt`,
+      `${series} - ${num}.[MixFlixTop].ass`,
+      `${series} - ${num}.[SS].ass`,
+      `${series} - ${num}.vtt`
+    );
+  }
+  const out = [];
+  for (const dir of ['sub', 'Sub']) {
+    for (const name of names) {
+      out.push(`${u.origin}/${[...root, dir, name].map(encodeURIComponent).join('/')}`);
+    }
+  }
+  return [...new Set(out)];
+}
+
+function decodeSubtitle(buf) {
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) return buf.toString('utf16le').replace(/^\uFEFF/, '');
+  if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) {
+    const swapped = Buffer.from(buf);
+    if (swapped.length % 2 === 0) swapped.swap16();
+    return swapped.toString('utf16le').replace(/^\uFEFF/, '');
+  }
+  let text = buf.toString('utf8');
+  if (text.includes('\uFFFD')) {
+    try {
+      const alt = new TextDecoder('windows-1256').decode(buf);
+      if (!alt.includes('\uFFFD')) text = alt;
+    } catch { /* decoder unavailable */ }
+  }
+  return text.replace(/^\uFEFF/, '');
+}
+
+const vttPad = (n, w = 2) => String(n).padStart(w, '0');
+function assClock(value) {
+  const m = /^(\d+):(\d{1,2}):(\d{1,2})[.,](\d{1,3})$/.exec(String(value || '').trim());
+  if (!m) return null;
+  return `${vttPad(+m[1])}:${vttPad(+m[2])}:${vttPad(+m[3])}.${(m[4] + '00').slice(0, 3)}`;
+}
+function srtClock(value) {
+  const m = /^(\d{1,2}):(\d{1,2}):(\d{1,2})[.,](\d{1,3})$/.exec(String(value || '').trim());
+  if (!m) return null;
+  return `${vttPad(+m[1])}:${vttPad(+m[2])}:${vttPad(+m[3])}.${(m[4] + '00').slice(0, 3)}`;
+}
+const cueEscape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/-->/g, '→');
+function assCueText(raw) {
+  let text = String(raw || '');
+  const drawing = /\\p[1-9]/.test(text);
+  text = text.replace(/\{[^}]*\}/g, '').replace(/\\N/gi, '\n').replace(/\\n/g, '\n').replace(/\\h/g, ' ');
+  text = text.split('\n').map(line => line.trim()).filter(Boolean).join('\n');
+  if (!text) return '';
+  if (drawing && /^[mnlbspc\d\s.,-]+$/i.test(text)) return '';
+  return cueEscape(text);
+}
+function assFields(line, count) {
+  const out = [];
+  let start = 0;
+  for (let i = 0; i < count - 1; i++) {
+    const at = line.indexOf(',', start);
+    if (at < 0) break;
+    out.push(line.slice(start, at));
+    start = at + 1;
+  }
+  out.push(line.slice(start));
+  return out;
+}
+function assToVtt(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  const cues = [];
+  let inEvents = false, fields = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (/^\[Events\]/i.test(line)) { inEvents = true; continue; }
+    if (/^\[[^\]]+\]/.test(line)) { inEvents = false; continue; }
+    if (!inEvents) continue;
+    if (/^Format\s*:/i.test(line)) {
+      fields = line.slice(line.indexOf(':') + 1).split(',').map(s => s.trim().toLowerCase());
+      continue;
+    }
+    if (!/^Dialogue\s*:/i.test(line)) continue;
+    const body = line.slice(line.indexOf(':') + 1).trim();
+    const f = assFields(body, fields ? fields.length : 10);
+    const field = name => {
+      const i = fields ? fields.indexOf(name) : -1;
+      return i >= 0 ? f[i] : null;
+    };
+    const start = assClock(field('start') ?? f[1]);
+    const end = assClock(field('end') ?? f[2]);
+    if (!start || !end || end <= start) continue;
+    const cue = assCueText(field('text') ?? f[9]);
+    if (!cue) continue;
+    cues.push({ start, end, text: cue });
+  }
+  cues.sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
+  const seen = new Set();
+  const out = ['WEBVTT', ''];
+  for (const cue of cues) {
+    const key = cue.start + '|' + cue.end + '|' + cue.text;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(cue.start + ' --> ' + cue.end, cue.text, '');
+  }
+  return out.join('\n');
+}
+function srtToVtt(text) {
+  const blocks = String(text || '').replace(/\r\n?/g, '\n').split(/\n{2,}/);
+  const out = ['WEBVTT', ''];
+  for (const block of blocks) {
+    const lines = block.split('\n').filter(Boolean);
+    if (!lines.length) continue;
+    const at = lines.findIndex(line => line.includes('-->'));
+    if (at < 0) continue;
+    const m = /^\s*(\S+)\s*-->\s*(\S+)/.exec(lines[at]);
+    if (!m) continue;
+    const start = srtClock(m[1]), end = srtClock(m[2]);
+    if (!start || !end || end <= start) continue;
+    let body = lines.slice(at + 1).join('\n')
+      .replace(/<[^>]*>/g, '').replace(/\{[^}]*\}/g, '');
+    body = body.split('\n').map(line => line.trim()).filter(Boolean).join('\n');
+    if (!body) continue;
+    out.push(start + ' --> ' + end, cueEscape(body), '');
+  }
+  return out.join('\n');
+}
+function toVtt(text, url) {
+  const clean = String(url || '').split(/[?#]/)[0];
+  if (/\.(ass|ssa)$/i.test(clean) || /^\s*\[Script Info\]/i.test(text)) return assToVtt(text);
+  if (/\.srt$/i.test(clean)) return srtToVtt(text);
+  if (/\.vtt$/i.test(clean)) return /^WEBVTT/i.test(text.trim()) ? text.replace(/\r\n?/g, '\n') : 'WEBVTT\n\n' + text;
+  if (text.includes('-->')) return srtToVtt(text);
+  return assToVtt(text);
+}
+
+async function fetchSub(url, method, timeout) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeout);
+  try {
+    const r = await fetch(url, {
+      method,
+      redirect: 'follow',
+      signal: ctl.signal,
+      headers: {
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
+        'accept': '*/*',
+        'referer': 'https://animex.pro/'
+      }
+    });
+    if (method === 'HEAD') return { status: r.status, len: Number(r.headers.get('content-length') || 0) };
+    if (!r.ok) return { status: r.status, buf: null };
+    const buf = Buffer.from(await r.arrayBuffer());
+    return { status: 200, buf };
+  } catch {
+    return { status: 0, buf: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function sendVtt(res, text) {
+  res.writeHead(200, {
+    'Content-Type': 'text/vtt; charset=utf-8',
+    'Cache-Control': 'private, max-age=86400',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  res.end(text);
+}
 const BY_ID = new Map(MOVIES.map(m => [m.id, m]));
 const SEARCH_INDEX = MOVIES.map(m => ({
   ref: m,
@@ -154,11 +376,12 @@ function featured() {
   };
 }
 function summary(m) {
+  const videoLinks = (m.links || []).filter(l => !l.sub);
   return {
     id: m.id, title: m.title, titleEn: m.titleEn, year: m.year, type: m.type,
     genre: m.genre, genres: m.genres, country: m.country, language: m.language,
-    siteRating: m.siteRating, linkCount: m.linkCount ?? m.links.length,
-    topQ: [...new Set((m.links || []).map(l => l.q))].sort((a, b) => {
+    siteRating: m.siteRating, linkCount: videoLinks.length,
+    topQ: [...new Set(videoLinks.map(l => l.q))].sort((a, b) => {
       const rank = q => { const i = ['4K', '1080p', '720p', '480p'].indexOf(q); return i < 0 ? 99 : i; };
       return rank(a) - rank(b);
     })[0] || '',
@@ -380,7 +603,7 @@ async function enrichFromJikan(title) {
     plot: a.synopsis || '',
     poster: a.images?.jpg?.large_image_url || '',
     genres: (a.genres || []).map(g => g.name),
-    trailer: youtube(a.trailer?.youtube_id),
+    trailer: null, // trailers come only from the validated chain in findTrailer()
   };
 }
 async function enrichFromTVmaze(title) {
@@ -402,7 +625,7 @@ async function enrichFromIMDbUnofficial(title) {
   return { source: 'IMDb', imdb: r.imdb_rating || '', imdbId: r.imdb_id || '', year: String(r['#YEAR'] || r.metadata?.year || ''), poster: r['#IMG_POSTER'] || r.img_poster || '' };
 }
 async function youtubeFallback(title) {
-  if (!config.youtubeFallback) return null;
+  if (config.youtubeFallback !== true) return null; // scraping YouTube search is opt-in only
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 6500);
@@ -415,13 +638,128 @@ async function youtubeFallback(title) {
 }
 
 const EMPTY = { imdb: '', year: '', plot: '', poster: '', backdrop: '', genres: [], trailer: null, sources: [] };
+/* ------------------- trailers: free, no API key, strict matching -------------------
+   Order (first validated hit wins):
+     anime        : Jikan -> AniList -> Dailymotion
+     movie/series : iTunes preview (direct video) -> Dailymotion
+   Optional last resort (off by default): YouTube search page, config.youtubeFallback = true.
+   A candidate is accepted only if its title equals the wanted title (after normalising)
+   and the year is within +-1 when both are known. No match -> no trailer (never a guess). */
+const normT = s => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/&/g, ' and ').replace(/\(\s*(19|20)\d{2}\s*\)/g, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const coreT = s => normT(s).replace(/^(the|a|an) /, '');
+const yearOf = v => { const m = String(v == null ? '' : v).match(/(?:19|20)\d{2}/); return m ? Number(m[0]) : 0; };
+const yearOk = (a, b) => { const x = yearOf(a), y = yearOf(b); return !x || !y || Math.abs(x - y) <= 1; };
+const sameTitle = (cands, want) => { const w = coreT(want); return !!w && cands.some(c => c && coreT(c) === w); };
+const isHttps = (u, hosts) => { try { const x = new URL(u); return x.protocol === 'https:' && hosts.some(h => x.hostname === h || x.hostname.endsWith('.' + h)); } catch { return false; } };
+const ytId = v => (/^[\w-]{11}$/.test(String(v || '')) ? String(v) : '');
+
+async function postJSON(url, body, timeout = 5000) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeout);
+  try {
+    const r = await fetch(url, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'lookmv/1.0' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+function dailymotion(id) {
+  if (!/^[a-z0-9]{5,20}$/i.test(String(id || ''))) return null;
+  return { key: id, kind: 'dailymotion', embed: 'https://www.dailymotion.com/embed/video/' + id + '?autoplay=1&ui-logo=0&sharing-enable=false', watch: 'https://www.dailymotion.com/video/' + id };
+}
+const tag = (t, source) => (t ? { ...t, source } : null);
+
+async function trailerJikan(title, year) {
+  const d = await getJSON('https://api.jikan.moe/v4/anime?limit=5&q=' + encodeURIComponent(title), 5000);
+  for (const a of d?.data || []) {
+    const names = [a.title, a.title_english, a.title_japanese, ...(a.titles || []).map(x => x.title)];
+    if (!sameTitle(names, title) || !yearOk(year, a.year || a.aired?.prop?.from?.year)) continue;
+    const id = ytId(a.trailer?.youtube_id);
+    if (id) return tag(youtube(id), 'Jikan');
+  }
+  return null;
+}
+async function trailerAniList(title, year) {
+  const d = await postJSON('https://graphql.anilist.co', {
+    query: 'query($s:String){Page(perPage:5){media(search:$s,type:ANIME,sort:SEARCH_MATCH){title{romaji english native} synonyms seasonYear startDate{year} trailer{id site}}}}',
+    variables: { s: title },
+  });
+  for (const a of d?.data?.Page?.media || []) {
+    const names = [a.title?.romaji, a.title?.english, a.title?.native, ...(a.synonyms || [])];
+    if (!sameTitle(names, title) || !yearOk(year, a.seasonYear || a.startDate?.year)) continue;
+    const site = String(a.trailer?.site || '').toLowerCase();
+    if (site === 'youtube' && ytId(a.trailer.id)) return tag(youtube(a.trailer.id), 'AniList');
+    if (site === 'dailymotion') { const t = dailymotion(a.trailer.id); if (t) return tag(t, 'AniList'); }
+  }
+  return null;
+}
+async function trailerITunes(title, year, type) {
+  const tv = type === 'series';
+  const d = await getJSON('https://itunes.apple.com/search?limit=10&country=us&term=' + encodeURIComponent(title) +
+    (tv ? '&media=tvShow&entity=tvSeason' : '&media=movie&entity=movie'), 5000);
+  for (const r of d?.results || []) {
+    if (!isHttps(r.previewUrl, ['apple.com', 'mzstatic.com'])) continue;
+    const names = tv ? [String(r.collectionName || '').replace(/,\s*(season|series)\s*\d+.*$/i, ''), r.artistName] : [r.trackName];
+    if (!sameTitle(names, title) || !yearOk(year, r.releaseDate)) continue;
+    return { kind: 'file', video: r.previewUrl, watch: r.trackViewUrl || r.collectionViewUrl || r.previewUrl, source: 'iTunes' };
+  }
+  return null;
+}
+const DM_BAD = /\b(reaction|react|review|breakdown|explained|explanation|fan ?made|parody|spoof|recap|ending|scene|clip|behind the scenes|interview|gameplay|game|ost|soundtrack|full movie|full episode|episode \d+|cam|leak(ed)?)\b/;
+async function trailerDailymotion(title, year) {
+  const core = coreT(title);
+  // very short titles ("It", "Her") are too ambiguous without a year to check against
+  if (core.length < 3 || (!yearOf(year) && core.split(' ').length === 1 && core.length <= 4)) return null;
+  const q = encodeURIComponent(title + ' ' + (yearOf(year) || '') + ' official trailer');
+  for (const flags of ['&flags=verified', '']) {
+    let d;
+    try { d = await getJSON('https://api.dailymotion.com/videos?fields=id,title,duration&limit=10&sort=relevance&search=' + q + flags, 5000); } catch { continue; }
+    for (const v of d?.list || []) {
+      const nt = ' ' + normT(v.title) + ' ';
+      if (!nt.includes(' ' + core + ' ')) continue;
+      if (!/\b(trailer|teaser)\b/.test(nt) || DM_BAD.test(nt)) continue;
+      if (!(v.duration >= 30 && v.duration <= 420)) continue;
+      const ys = (nt.match(/\b(?:19|20)\d{2}\b/g) || []).map(Number);
+      if (yearOf(year) && ys.length && !ys.some(y => Math.abs(y - yearOf(year)) <= 1)) continue;
+      const t = dailymotion(v.id);
+      if (t) return tag(t, 'Dailymotion');
+    }
+  }
+  return null;
+}
+async function findTrailer(title, year, type) {
+  if (!/[a-z0-9]/i.test(title)) return null; // non-Latin titles cannot be matched safely
+  const chain = type === 'anime'
+    ? [trailerJikan, trailerAniList, trailerDailymotion]
+    : [trailerITunes, trailerDailymotion];
+  for (const fn of chain) {
+    try { const t = await fn(title, year, type); if (t) return t; } catch { /* provider down or rate-limited: try the next one */ }
+  }
+  if (config.youtubeFallback === true) { const t = await youtubeFallback(title); if (t) return tag(t, 'YouTube'); }
+  return null;
+}
+const trailerJobs = new Map();
+function trailerFor(title, year, type) {
+  type = ['anime', 'series'].includes(type) ? type : 'movie';
+  const k = 'trailer|' + [coreT(title), yearOf(year) || '', type].join('|');
+  const hit = cache[k];
+  if (hit && Date.now() - hit.at < (hit.data?.trailer ? 30 : 0.5) * DAY) return Promise.resolve(hit.data.trailer || null);
+  if (!trailerJobs.has(k)) {
+    trailerJobs.set(k, limited_(() => findTrailer(title, year, type)).catch(() => undefined).then(t => {
+      if (t !== undefined) { cache[k] = { at: Date.now(), data: { trailer: t || null } }; persist(['cache']); }
+      return t || null;
+    }).finally(() => trailerJobs.delete(k)));
+  }
+  return trailerJobs.get(k);
+}
+
 async function enrich(title, year, type, lite = false) {
   const ck = (lite ? 'lite|' : '') + [title, year, type].join('|').toLowerCase();
   if (cache[ck] && Date.now() - cache[ck].at < 7 * DAY) return { ...cache[ck].data, cached: true };
   if (lite) { const full = cache[[title, year, type].join('|').toLowerCase()]; if (full && Date.now() - full.at < 7 * DAY) return { ...full.data, cached: true }; }
   const out = { ...EMPTY, sources: [] };
   const providers = [];
-  if (type === 'anime' || type === 'series') providers.push(['Jikan', () => enrichFromJikan(title)]);
+  if (type === 'anime') providers.push(['Jikan', () => enrichFromJikan(title)]);
   providers.push(['TMDb', () => enrichFromTMDb(title, year, type === 'series' || type === 'anime')]);
   providers.push(['OMDb', () => enrichFromOMDb(title, year)]);
   providers.push(['IMDb', () => enrichFromIMDbUnofficial(title)]);
@@ -438,9 +776,9 @@ async function enrich(title, year, type, lite = false) {
     if (!out.trailer && d.trailer) out.trailer = d.trailer;
     if (d.genres?.length && !out.genres.length) out.genres = d.genres;
   }
-  if (!lite && !out.trailer && !out.sources.includes('Jikan') && !out.sources.includes('TMDb')) {
-    const t = await youtubeFallback(title);
-    if (t) { out.trailer = t; out.sources.push('YouTube'); }
+  if (!lite && !out.trailer) {
+    const t = await trailerFor(title, year, type);
+    if (t) { out.trailer = t; out.sources.push(t.source); }
   }
   /* a lookup that found nothing (e.g. offline) is retried after 30 minutes, not a week */
   const found = out.sources.length > 0;
@@ -632,6 +970,58 @@ async function api(req, res, u) {
   const user = sessionUser(req);
   if (!['/api/logout'].includes(p) && !user) return json(res, 401, { error: 'unauthorized' });
 
+  /* Subtitle bridge: fetches the remote .srt/.ass file (no browser CORS),
+   * converts it to WebVTT and caches the result. Pass either the subtitle
+   * file itself or the episode's video URL; in the latter case the known
+   * "sub/<series> - <episode>.ass" locations are probed automatically. */
+  if (p === '/api/subtitle' && method === 'GET') {
+    const raw = String(u.searchParams.get('u') || '').trim();
+    if (!raw) return json(res, 400, { error: 'missing u' });
+    const candidates = subtitleCandidates(raw).filter(c => {
+      try { return allowedSubtitleHost(new URL(c).hostname); } catch { return false; }
+    });
+    if (!candidates.length) return json(res, 404, { error: 'no subtitle' });
+    const now = Date.now();
+    const cached = subCache.get(raw);
+    if (cached && now - cached.at < SUB_TTL) return sendVtt(res, cached.vtt);
+    const missed = subMiss.get(raw);
+    if (missed && now - missed < SUB_MISS_TTL) return json(res, 404, { error: 'no subtitle' });
+
+    const deadline = now + 9000;
+    let found = null;
+    for (const candidate of candidates.slice(0, 18)) {
+      if (Date.now() > deadline) break;
+      const hit = subCache.get(candidate);
+      if (hit && Date.now() - hit.at < SUB_TTL) { found = hit; break; }
+      const head = await fetchSub(candidate, 'HEAD', 3500);
+      let got = null;
+      if (head.status === 200) {
+        if (head.len && head.len > SUB_MAX) continue;
+        got = await fetchSub(candidate, 'GET', 12000);
+      } else if (head.status === 403 || head.status === 405 || head.status === 501) {
+        /* some CDNs refuse HEAD but serve GET */
+        got = await fetchSub(candidate, 'GET', 12000);
+      } else continue;
+      if (!got || got.status !== 200 || !got.buf || !got.buf.length || got.buf.length > SUB_MAX) continue;
+      const vtt = toVtt(decodeSubtitle(got.buf), candidate);
+      if (!vtt || !vtt.includes('-->')) continue;
+      found = { vtt, at: Date.now(), url: candidate };
+      break;
+    }
+
+    if (!found) {
+      if (Date.now() <= deadline) subMiss.set(raw, Date.now());
+      return json(res, 404, { error: 'no subtitle' });
+    }
+    subCache.set(raw, found);
+    subCache.set(found.url, found);
+    if (subCache.size > 120) {
+      const old = [...subCache.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, subCache.size - 120);
+      for (const [key] of old) subCache.delete(key);
+    }
+    return sendVtt(res, found.vtt);
+  }
+
   if (p === '/api/logout' && method === 'POST') { destroySession(req, res); return json(res, 200, { ok: true }); }
   if (p === '/api/change-email' && method === 'POST') {
     const b = await body(req);
@@ -694,6 +1084,11 @@ async function api(req, res, u) {
   /* metadata is fetched in the visitor's browser from the source sites; this
      endpoint only returns the daily catalog pick (no external API calls). */
   if (p === '/api/featured') return json(res, 200, featured());
+  if (p === '/api/trailer') {
+    const title = String(u.searchParams.get('q') || '').trim().slice(0, 160);
+    if (!title) return json(res, 400, { error: 'missing q' });
+    return json(res, 200, { trailer: await trailerFor(title, u.searchParams.get('year') || '', u.searchParams.get('type') || 'movie') });
+  }
   if (p === '/api/enrich') {
     const title = String(u.searchParams.get('q') || '').trim();
     if (!title) return json(res, 400, { error: 'missing q' });

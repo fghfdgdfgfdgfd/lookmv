@@ -78,6 +78,7 @@
       siteRating: r.rating, ratingLabel: r.ratingLabel, imdb: r.imdb, vote: r.vote,
       poster: it.poster || '', backdrop: it.backdrop || it.poster || '',
       plot: cleanPlot(it.synopsis),
+      softSub: /سافت\s*ساب|soft/i.test(String(it.sub_status || '')),
       linkCount: Number(it.episodes_aired || 0), topQ: '', added: '',
       seasons: it.seasons || null, _axId: it.id, alsoIn: null
     });
@@ -402,6 +403,7 @@
     if (e.season != null) return Number(e.season);
     return groupSeason || null;
   }
+  function isSubUrl(u) { return /\.(srt|ssa|ass|vtt)(\?|$)/i.test(String(u || '')); }
   function axLinks(d) {
     var links = [];
     (d.download_groups || []).forEach(function (g) {
@@ -412,7 +414,8 @@
         if (!eps.length) {
           if (s.url) links.push({
             q: q, label: s.label || '', name: s.label || '',
-            group: g.title || '', folder: s.kind === 'folder', url: s.url, size: ''
+            group: g.title || '', folder: s.kind === 'folder', url: s.url, size: '',
+            sub: isSubUrl(s.url) || undefined
           });
           return;
         }
@@ -421,7 +424,9 @@
             q: q, label: '', name: e.file_name || s.label || '', group: g.title || '',
             ep: e.number == null ? null : Number(e.number),
             season: seasonOfEpisode(e, sg),
-            size: sizeText(e.size), url: e.url
+            size: sizeText(e.size), url: e.url,
+            sub: isSubUrl(e.url) || undefined,
+            soft: e.sub_type === 'soft' || undefined
           });
         });
       });

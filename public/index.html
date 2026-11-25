@@ -265,6 +265,18 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 }
 /* ---------- movie page: staggered entrance (transform/opacity only) ---------- */
 @keyframes fadeUp{from{opacity:0;transform:translateY(22px)}}
+.pbar{display:flex;flex-direction:column;align-items:center;gap:12px;padding:30px 0 12px;animation:pbIn .5s var(--spring) backwards;transition:opacity .4s ease,transform .5s var(--spring)}
+.pbar[hidden]{display:none}
+.pbar.done{opacity:0;transform:translateY(8px)}
+.pbar .trk{position:relative;direction:ltr;width:min(340px,70vw);height:6px;border-radius:99px;overflow:hidden;background:color-mix(in srgb,var(--ln) 75%,transparent)}
+.pbar .trk i{position:absolute;top:0;bottom:0;left:0;width:38%;border-radius:inherit;background:linear-gradient(90deg,var(--tl),var(--pu),var(--tl));background-size:200% 100%;box-shadow:0 0 14px color-mix(in srgb,var(--tl) 60%,transparent);animation:pbMove 1.3s cubic-bezier(.65,0,.35,1) infinite,pbShine 1.8s linear infinite}
+.pbar.done .trk i{animation:none;width:100%;transform:none;transition:width .35s var(--spring)}
+.pbar .pt{font-size:13px;font-weight:600;color:var(--mt);animation:pbPulse 1.6s ease-in-out infinite}
+.pbar.done .pt{animation:none}
+@keyframes pbMove{0%{transform:translateX(-105%)}100%{transform:translateX(265%)}}
+@keyframes pbShine{to{background-position:-200% 0}}
+@keyframes pbPulse{50%{opacity:.45}}
+@keyframes pbIn{from{opacity:0;transform:translateY(10px)}}
 @keyframes posterIn{from{opacity:0;transform:translateY(34px) scale(.9) rotate(-2deg)}}
 @keyframes titleIn{from{opacity:0;transform:translateY(28px);filter:blur(8px)}}
 @keyframes chipIn{from{opacity:0;transform:translateY(12px) scale(.85)}}
@@ -301,6 +313,10 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 .pl[hidden]{display:none}.pl:not([hidden]){animation:plIn .5s var(--spring)}
 @keyframes plIn{from{opacity:0;transform:scale(1.04)}}
 .pl video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+/* subtitles are drawn by our own overlay so they can be resized and have no background box */
+.plsub{position:absolute;left:0;right:0;bottom:clamp(70px,14vh,160px);z-index:1;display:flex;justify-content:center;padding:0 5%;pointer-events:none;text-align:center}
+.plsub[hidden]{display:none}
+.plsub span{display:inline-block;max-width:100%;color:#fff;font-family:Vazirmatn,system-ui,sans-serif;font-size:calc(var(--sub-scale,1) * 3.4vh);line-height:1.55;white-space:pre-line;direction:rtl;unicode-bidi:plaintext;text-shadow:0 1px 2px #000,0 0 3px #000,0 0 6px #000}
 .pl.pick{background:radial-gradient(circle at 75% 0,#52e39a33,#000 62%)}.pl.pick video{visibility:hidden}
 .plt,.plc{position:absolute;left:0;right:0;z-index:2;display:flex;transition:opacity .5s var(--spring),transform .5s var(--spring)}
 .plt{top:0;align-items:center;gap:12px;padding:max(14px,env(safe-area-inset-top)) 16px 36px;background:linear-gradient(#000b,transparent)}
@@ -320,7 +336,9 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 .plr{display:flex;align-items:center;gap:8px}.plr .tm{font-size:13px;font-variant-numeric:tabular-nums;color:#fffc;margin:0 6px;white-space:nowrap}.plr .sp{flex:1}
 .pm,.pls{position:absolute;z-index:4;background:color-mix(in srgb,#101614 90%,transparent);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border:1px solid #ffffff1f;border-radius:20px;box-shadow:0 20px 50px #0009;padding:8px;animation:plIn .35s var(--spring)}
 .pm[hidden],.pls[hidden]{display:none}
-.pm{bottom:92px;right:16px;width:230px;max-height:60vh;overflow:auto}.pm .g{font-size:12px;color:#fff9;padding:10px 12px 4px}
+.pm{bottom:92px;right:16px;width:250px;max-height:68vh;overflow:auto}.pm .g{font-size:12px;color:#fff9;padding:10px 12px 4px}
+.pm .subsize{display:flex;align-items:center;gap:8px;padding:2px 12px 10px;color:#fff9;font-size:11px;white-space:nowrap}
+.pm .subsize input{flex:1;min-width:0;accent-color:var(--tl);cursor:pointer}
 .pls{top:76px;bottom:92px;right:16px;width:min(340px,calc(100% - 32px));flex-direction:column}.pls:not([hidden]){display:flex}.pls h3{font-size:15px;padding:12px 12px 6px}.pls .li{overflow:auto;display:grid;gap:4px}
 .mi,.ei{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:46px;padding:0 12px;border:0;border-radius:12px;background:none;color:#fff;cursor:pointer;font-size:14px;text-align:start;transition:background-color .3s,color .3s}
 .mi:hover,.ei:hover{background:#ffffff1a}.mi.on,.ei.on{color:var(--tl);background:#52e39a1f;font-weight:600}.mi small{color:#fff9}
@@ -385,6 +403,7 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 .trailerbtn{background:color-mix(in srgb,var(--pu) 22%,transparent)!important}
 .trailerbox{position:relative;margin:18px 0 0;aspect-ratio:16/9;border-radius:20px;overflow:hidden;border:1px solid var(--ln);background:#000}
 .trailerbox iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.trailerbox video{position:absolute;inset:0;width:100%;height:100%;background:#000;object-fit:contain}
 .trailerbox[hidden]{display:none}
 .np{display:inline-flex;align-items:center;gap:8px;color:var(--mt);font-size:13px}
 
@@ -523,6 +542,7 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 <section class="view pad" id="v-all" hidden>
   <div class="allh rv"><button class="btn sec" id="back" aria-label="بازگشت"><svg class="dirf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span class="lb">بازگشت</span></button><h2 class="rowh" id="allTitle"></h2></div>
   <div class="grid" id="allGrid"></div>
+  <div class="pbar" id="allBar" role="status" aria-live="polite" hidden><div class="trk"><i></i></div><span class="pt"></span></div>
 </section>
 
 <section class="view pad" id="v-movie" hidden>
@@ -546,7 +566,7 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
       </div>
     </div>
   </div>
-  <div class="trailerbox" id="trailerBox" hidden><iframe id="trailerFrame" title="تریلر" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+  <div class="trailerbox" id="trailerBox" hidden><iframe id="trailerFrame" title="تریلر" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe><video id="trailerVid" controls playsinline preload="metadata" hidden></video></div>
   <div class="mtabs" id="mtabs" role="tablist" aria-label="بخش‌ها">
     <i class="mind" id="mind"></i>
     <button class="mt on" role="tab" aria-selected="true" aria-controls="p-dl" data-p="dl"><span>باکس دانلود</span></button>
@@ -864,7 +884,9 @@ watch('#v-home');
 const tabs=$$('#tabs .ni'),ind=$('#ind'),links=$('#tabs');let cur='home',busy=false;
 const box=el=>{const a=el.getBoundingClientRect(),b=links.getBoundingClientRect();return{x:a.left-b.left,w:a.width}};
 async function go(name,btn){
-  if(name===cur||busy)return;busy=true;
+  if(name===cur)return;
+  if(busy){await new Promise(r=>{const t=setInterval(()=>{if(!busy){clearInterval(t);r()}},30)});if(name===cur)return}
+  busy=true;
   const old=$('#v-'+cur),nu=$('#v-'+name),prev=tabs.find(t=>t.classList.contains('on')),from=box(prev);
   tabs.forEach(t=>{t.classList.toggle('on',t===btn);t.setAttribute('aria-selected',t===btn)});
   const to=box(btn),still=REDUCED();
@@ -910,7 +932,7 @@ $('#theme').onclick=e=>{
   setTimeout(()=>{H.dataset.theme=n;try{localStorage.setItem('th',n)}catch(_){}},120)};
 
 /* ---------- language: cyber-decode text swap + blur pulse ---------- */
-const EN={'در حال جستجو…':'Searching…','نتیجه‌ای پیدا نشد':'No results found','© ۲۰۲۶ lookmv · تمامی حقوق محفوظ است. حقوق هر فیلم و سریال متعلق به صاحبان اثر است.':'© 2026 lookmv · All rights reserved. Rights to every movie and series belong to their respective owners.','درباره ما':'About us','تماس با ما':'Contact us','قوانین':'Rules','استفاده از lookmv فقط برای مصارف شخصی و غیرتجاری است.':'lookmv is for personal, non-commercial use only.','کپی، فروش یا بازنشر محتوا و لینک‌های سایت بدون اجازه مجاز نیست.':'Copying, selling or republishing the site’s content and links without permission is not allowed.','هر کاربر مسئول نظرات خود است؛ توهین، تبلیغات و محتوای نامناسب حذف می‌شود.':'Each user is responsible for their comments; insults, ads and inappropriate content will be removed.','هرگونه اختلال در سایت یا سوءاستفاده از پلیر و لینک‌ها ممنوع است.':'Disrupting the site or abusing the player and links is prohibited.','lookmv ممکن است قوانین را در هر زمان تغییر دهد؛ ادامهٔ استفاده یعنی پذیرش آن‌ها.':'lookmv may change these rules at any time; continued use means you accept them.','حقوق فیلم‌ها و سریال‌ها متعلق به صاحبان اثر است. برای درخواست حذف محتوا از بخش «تماس با ما» اقدام کنید.':'Rights to movies and series belong to their owners. To request removal of content, use “Contact us”.','قسمت':'Episode','انتخاب قسمت':'Select episode','کیفیت':'Quality','خودکار':'Auto','سرعت':'Speed','بستن':'Close','پخش':'Play','قسمت قبلی':'Previous episode','قسمت بعدی':'Next episode','لیست قسمت‌ها':'Episodes','صدا':'Sound','تنظیمات':'Settings','تمام‌صفحه':'Fullscreen','خانه':'Home','دسته‌بندی':'Categories','پروفایل':'Profile','لیست من':'My list','جستجو':'Search','جستجو...':'Search...','ناوبری':'Navigation','تغییر تم':'Toggle theme','تغییر زبان':'Change language','English':'فارسی',
+const EN={'در حال بارگذاری بیشتر…':'Loading more…','در حال جستجو…':'Searching…','نتیجه‌ای پیدا نشد':'No results found','© ۲۰۲۶ lookmv · تمامی حقوق محفوظ است. حقوق هر فیلم و سریال متعلق به صاحبان اثر است.':'© 2026 lookmv · All rights reserved. Rights to every movie and series belong to their respective owners.','درباره ما':'About us','تماس با ما':'Contact us','قوانین':'Rules','استفاده از lookmv فقط برای مصارف شخصی و غیرتجاری است.':'lookmv is for personal, non-commercial use only.','کپی، فروش یا بازنشر محتوا و لینک‌های سایت بدون اجازه مجاز نیست.':'Copying, selling or republishing the site’s content and links without permission is not allowed.','هر کاربر مسئول نظرات خود است؛ توهین، تبلیغات و محتوای نامناسب حذف می‌شود.':'Each user is responsible for their comments; insults, ads and inappropriate content will be removed.','هرگونه اختلال در سایت یا سوءاستفاده از پلیر و لینک‌ها ممنوع است.':'Disrupting the site or abusing the player and links is prohibited.','lookmv ممکن است قوانین را در هر زمان تغییر دهد؛ ادامهٔ استفاده یعنی پذیرش آن‌ها.':'lookmv may change these rules at any time; continued use means you accept them.','حقوق فیلم‌ها و سریال‌ها متعلق به صاحبان اثر است. برای درخواست حذف محتوا از بخش «تماس با ما» اقدام کنید.':'Rights to movies and series belong to their owners. To request removal of content, use “Contact us”.','قسمت':'Episode','انتخاب قسمت':'Select episode','کیفیت':'Quality','خودکار':'Auto','سرعت':'Speed','بستن':'Close','پخش':'Play','قسمت قبلی':'Previous episode','قسمت بعدی':'Next episode','لیست قسمت‌ها':'Episodes','صدا':'Sound','تنظیمات':'Settings','تمام‌صفحه':'Fullscreen','خانه':'Home','دسته‌بندی':'Categories','پروفایل':'Profile','لیست من':'My list','جستجو':'Search','جستجو...':'Search...','ناوبری':'Navigation','تغییر تم':'Toggle theme','تغییر زبان':'Change language','English':'فارسی',
 '[عنوان فیلم ویژه]':'[Featured movie title]','[خلاصه داستان در دو سه خط]':'[Short synopsis in two or three lines]','تماشا':'Watch','دانلود':'Download','پخش خودکار تریلر':'Autoplay trailer',
 'اکشن و ماجراجویی':'Action & Adventure','درام و تاریخی':'Drama & History','کمدی و خانوادگی':'Comedy & Family','ترسناک و هیجان‌انگیز':'Horror & Thriller','جنایی و معمایی':'Crime & Mystery','علمی‌تخیلی و فانتزی':'Sci-fi & Fantasy','انیمیشن و انیمه':'Animation & Anime','سریال آسیایی':'Asian Series','ایرانی':'Iranian','متفرقه':'Other','اکشن':'Action','درام':'Drama','کمدی':'Comedy','ترسناک':'Horror','علمی‌تخیلی':'Sci-fi','انیمیشن':'Animation','مستند':'Documentary','عاشقانه':'Romance','دسته‌بندی‌ها':'Categories',
 'جدیدترین‌ها':'Latest','برتر امروز':'Top today','پیشنهاد برای شما':'Recommended for you','[عنوان فیلم]':'[Movie title]','ذخیره در لیست من':'Save to my list',
@@ -936,9 +958,11 @@ function setLang(l,instant){
   const t0=performance.now();let last=0;setTimeout(()=>H.classList.remove('swp'),2000);
   let flipped=false;
   (function f(now){
-    if(!flipped&&now-t0>1350){flipped=true;H.classList.add('nt');flip();rest.forEach(x=>x.n.nodeValue=x.to);requestAnimationFrame(()=>requestAnimationFrame(()=>H.classList.remove('nt')))}
     if(now-last>60){last=now;vis.forEach(x=>{const p=Math.min(Math.max((now-t0-x.d)/x.u,0),1);x.n.nodeValue=p<=0?x.old:p>=1?x.to:mix(x.to,p)})}
-    if(now-t0<1300)requestAnimationFrame(f);else{vis.forEach(x=>x.n.nodeValue=x.to);H.classList.remove('swp');tg.forEach(e=>e.style.willChange='');swapping=false}
+    if(now-t0<1300)requestAnimationFrame(f);else{
+      /* the loop ends at 1300ms, so the real switch (lang/dir/storage/hidden text) must happen here, not in a >1350ms branch that was never reached */
+      if(!flipped){flipped=true;H.classList.add('nt');flip();rest.forEach(x=>x.n.nodeValue=x.to);requestAnimationFrame(()=>requestAnimationFrame(()=>H.classList.remove('nt')))}
+      vis.forEach(x=>x.n.nodeValue=x.to);H.classList.remove('swp');tg.forEach(e=>e.style.willChange='');swapping=false}
   })(t0);
 }
 $('#lang').onclick=e=>{const b=e.currentTarget;if(swapping)return;
@@ -947,19 +971,31 @@ $('#lang').onclick=e=>{const b=e.currentTarget;if(swapping)return;
 
 /* ---------- "more": full list of a section ---------- */
 const TITLES={new:'جدیدترین ها',top:'برتر امروز',rec:'پیشنهاد برای شما',search:'نتایج جستجو',genre:'دسته بندی'};
+let allFrom='home';
+const barEl=()=>$('#allBar');
+function barShow(txt){
+  const b=barEl();clearTimeout(b._h);b.classList.remove('done');b.hidden=false;
+  b.querySelector('.pt').textContent=txt;if(lang==='en')applyInstant(b,'en')}
+function barHide(){
+  const b=barEl();if(b.hidden)return;b.classList.add('done');
+  clearTimeout(b._h);b._h=setTimeout(()=>{b.hidden=true;b.classList.remove('done')},420)}
 async function openAll(k,params,title){
+  if(cur==='movie'){if(prevView&&prevView!=='all')allFrom=prevView}else if(cur!=='all')allFrom=cur;
   $('#allTitle').textContent=title||TITLES[k]||'';
   if(allState.ctl)try{allState.ctl.abort()}catch(_){}
   allState={key:params||'',page:1,hasMore:false,loading:false,ctl:null};
   $('#allGrid').innerHTML='';
+  const old0=$('#allMore');if(old0)old0.remove();
+  if(cur!=='all')go('all',tabs[0]);
   await loadMore();
   if(lang==='en')applyInstant($('#v-all'),'en');
-  if(cur!=='all')go('all',tabs[0]);
 }
 async function loadMore(){
   if(allState.loading||!allState.key)return;
   allState.loading=true;
   const st=allState;
+  const oldMore=$('#allMore');if(oldMore)oldMore.remove();
+  barShow(st.page>1?'در حال بارگذاری بیشتر…':(String(st.key).includes('q=')?'در حال جستجو…':'در حال بارگذاری…'));
   try{
     const base=String(allState.key||'').replace(/^\?/,'');
     const sq=new URLSearchParams(base).get('q');
@@ -968,20 +1004,15 @@ async function loadMore(){
       /* results appear as soon as each source answers; the slower ones keep loading in the background */
       st.ctl=new AbortController();
       const grid=$('#allGrid');let shown=grid.children.length;
-      grid.querySelectorAll('#srLoad').forEach(x=>x.remove());
-      grid.insertAdjacentHTML('beforeend','<p class="empty" id="srLoad" style="grid-column:1/-1">در حال جستجو…</p>');
-      if(lang==='en')applyInstant($('#srLoad'),'en');
       try{
         d=await SourceCatalog.searchStream(sq,st.page,12,items=>{
           if(allState!==st||!items.length)return;
-          const ld=$('#srLoad');
           const html=items.map((m,i)=>card(m,shown+i)).join('');
-          ld?ld.insertAdjacentHTML('beforebegin',html):grid.insertAdjacentHTML('beforeend',html);
+          grid.insertAdjacentHTML('beforeend',html);
           shown+=items.length;loadCovers(items);
           if(lang==='en')applyInstant(grid,'en');
         },st.ctl.signal);
       }catch(e){d=null}
-      const ld=$('#srLoad');if(ld)ld.remove();
       if(allState!==st){st.loading=false;return}
       if(!d||!d.items.length){
         if(!shown){d=await api('/api/movies?q='+encodeURIComponent(sq)+'&limit=30&page='+st.page).catch(()=>({items:[],hasMore:false}));
@@ -1004,6 +1035,7 @@ async function loadMore(){
     if(allState.hasMore)$('#allGrid').insertAdjacentHTML('afterend','<button class="more" id="allMore" aria-label="بیشتر"><span class="mc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span><span>بیشتر</span></button>');
   }catch(e){if(allState===st)toast('خطا در بارگذاری فیلم ها',true)}
   st.loading=false;
+  if(allState===st)barHide();
 }
 document.addEventListener('click',e=>{
   const m=e.target.closest('.more');if(m&&m.dataset.more){if(m.dataset.more==='rec'){openRecommendationsAll();return}openAll(m.dataset.more,'sort='+(m.dataset.more==='top'?'rating':'new')+'&limit=30');return}
@@ -1014,7 +1046,7 @@ document.addEventListener('click',e=>{
   const genre=g.dataset.genre;
   openAll('genre','?genre='+encodeURIComponent(genre)+'&limit=30',genre);
 });
-$('#back').onclick=()=>go(prevView||'home',tabs.find(t=>t.dataset.v===(prevView||'home'))||tabs[0]);
+$('#back').onclick=()=>{const t=allFrom||'home';go(t,tabs.find(x=>x.dataset.v===t)||tabs[0])};
 
 /* ---------- mouse wheel over a row scrolls the row sideways (page scrolls again at the ends) ---------- */
 $$('.scroll').forEach(r=>r.addEventListener('wheel',e=>{
@@ -1089,9 +1121,21 @@ function buildGroups(m){
   return [...groups.entries()].sort((a,b)=>rankQ(a[0])-rankQ(b[0]));
 }
 const QCOLOR={'4K':'yl','1080p':'tl','720p':'pu','480p':'pk'};
+/* separate subtitle files must never be offered to <video> as a source */
+const safeDecode=s=>{try{return decodeURIComponent(String(s||''))}catch(_){return String(s||'')}};
+const isSubLink=l=>!!(l&&(l.sub||/\.(srt|ssa|ass|vtt)$/i.test(String(l.url||'').split(/[?#]/)[0])));
+const subLinksOf=m=>(m.links||[]).filter(l=>!l.folder&&isSubLink(l));
+const subFor=(m,s,n)=>{
+  const subs=subLinksOf(m);
+  const hit=subs.find(l=>l.ep===n&&(l.season||1)===(s||1));
+  if(hit)return hit.url;
+  const free=subs.find(l=>l.ep==null);
+  return free?free.url:null;
+};
+const softEpisode=ls=>ls.some(l=>l.soft||/\[SS\]|soft[ ._-]?sub/i.test(safeDecode(l.url)));
 /* ---- episode model: season/episode come from the server (parsed from file names) ---- */
 function episodeModel(m){
-  const all=m.links||[],files=all.filter(l=>!l.folder),folders=all.filter(l=>l.folder);
+  const all=m.links||[],files=all.filter(l=>!l.folder&&!isSubLink(l)),folders=all.filter(l=>l.folder);
   const map=new Map();
   files.filter(l=>l.ep!=null).forEach(l=>{const s=l.season||1,k=s+'-'+l.ep;if(!map.has(k))map.set(k,{s,n:l.ep,key:k,links:[]});map.get(k).links.push(l)});
   const eps=[...map.values()].sort((a,b)=>a.s-b.s||a.n-b.n);
@@ -1162,9 +1206,11 @@ $('#cmSend').onclick=()=>{const ta=$('#cmText'),t=ta.value.trim();if(!t){ta.focu
 /* player model: a series gets one entry per episode (so "Watch" shows the episode list); a film gets a single entry */
 function playerModel(m){
   const em=episodeModel(m),srcOf=ls=>{const src={};sortLinks(ls).forEach(l=>{const q=QO.includes(l.q)?l.q:'720p';if(!src[q])src[q]=l.url});return src};
-  if(em.eps.length>1)return {...m,multi:em.seasons.length>1,eps:em.eps.map(e=>({n:e.n,s:e.s,src:srcOf(e.links)}))};
-  const files=[...em.eps.flatMap(e=>e.links),...em.others];
-  return {...m,multi:false,eps:files.length?[{n:1,s:1,src:srcOf(files)}]:[]};
+  if(em.eps.length>1)return {...m,multi:em.seasons.length>1,eps:em.eps.map(e=>({n:e.n,s:e.s,src:srcOf(e.links),sub:subFor(m,e.s,e.n),soft:softEpisode(e.links)||!!m.softSub}))};
+  const files=[...em.eps.flatMap(e=>e.links),...em.others],subs=subLinksOf(m);
+  const one=em.eps[0];
+  const singleSub=(subs.find(l=>l.ep==null)||{}).url||(one?subFor(m,one.s,one.n):(subs[0]||{}).url)||null;
+  return {...m,multi:false,eps:files.length?[{n:1,s:1,src:srcOf(files),sub:singleSub,soft:softEpisode(files)||!!m.softSub}]:[]};
 }
 
 /* summary: 2 lines + "…", click to expand */
@@ -1208,15 +1254,36 @@ function loadEnrich(m){
   return ENRICH.get(k);
 }
 function trailerURL(info,auto){return info&&info.trailer&&info.trailer.embed?(info.trailer.embed+(auto?'&mute=1':'')):''}
-function stopTrailer(){$('#trailerFrame').src='';$('#trailerBox').hidden=true}
+function stopTrailer(){
+  $('#trailerFrame').src='';
+  const v=$('#trailerVid');try{v.pause()}catch(_){}v.removeAttribute('src');v.load();
+  $('#trailerBox').hidden=true}
+/* the source sites rarely carry a trailer, so ask the server's keyless, strictly-matched chain (iTunes / Jikan / AniList / Dailymotion) */
+const TR_REQ=new Map();
+async function fetchTrailer(m,info){
+  if(info&&info.trailer)return info.trailer;
+  const k=enrichKey(m),q=m.titleEn||m.title||'';
+  if(!/[a-z0-9]/i.test(q))return null;
+  if(!TR_REQ.has(k))TR_REQ.set(k,api('/api/trailer?q='+encodeURIComponent(q)+'&year='+encodeURIComponent(m.year||(info&&info.year)||'')+'&type='+encodeURIComponent(m.type||'movie'))
+    .then(d=>(d&&d.trailer)||null).catch(()=>{TR_REQ.delete(k);return null}));
+  const t=await TR_REQ.get(k);
+  if(t&&info)info.trailer=t;
+  return t}
 async function showTrailer(id,auto=false){
   const m=DETAILS.get(id)||SUMMARIES.get(id);if(!m)return;
   let info=ENR.get(enrichKey(m));
   if(!info){try{info=await loadEnrich(m)}catch(_){}}
-  const src=trailerURL(info,auto);
-  if(!src){if(!auto)toast('برای این عنوان تریلری یافت نشد',true);return}
+  const tr=(info&&info.trailer)||await fetchTrailer(m,info);
+  if(!tr||(!tr.embed&&!tr.video)){if(!auto)toast('برای این عنوان تریلری یافت نشد',true);return}
   if(currentMovie&&currentMovie.id!==id)return;
-  $('#trailerFrame').src=src;$('#trailerBox').hidden=false;
+  if(auto&&!$('#autoTrailer').checked)return;
+  const fr=$('#trailerFrame'),vd=$('#trailerVid');
+  if(tr.video){
+    fr.src='';fr.hidden=true;vd.hidden=false;vd.muted=!!auto;vd.src=tr.video;vd.play().catch(()=>{});
+  }else{
+    try{vd.pause()}catch(_){}vd.removeAttribute('src');vd.hidden=true;fr.hidden=false;fr.src=tr.embed+(auto?'&mute=1':'');
+  }
+  $('#trailerBox').hidden=false;
   if(!auto)$('#trailerBox').scrollIntoView({behavior:REDUCED()?'auto':'smooth',block:'center'});
 }
 async function openMovie(id,toDl){
@@ -1241,7 +1308,7 @@ async function openMovie(id,toDl){
   if(lang==='en')applyInstant($('#v-movie'),'en');
   go('movie',tabs[0]).then(()=>{chkSum();if(toDl)setTimeout(toBox,60)});
   try{
-    const info=await loadEnrich(m);enInfo=info;
+    const info=(await loadEnrich(m))||{};enInfo=info;
     if(!currentMovie||currentMovie.id!==id)return;
     const r=info.rating||info.imdb||info.vote;
     if(r){$('#mvImdb').textContent=r;$('#mvRateLabel').textContent=info.ratingLabel||'IMDb'}
@@ -1249,7 +1316,7 @@ async function openMovie(id,toDl){
     if(info.plot){sum.textContent=info.plot;chkSum()}
     if(info.poster){const pe=$('.mvposter');if(!pe.querySelector('.cov')){const bg=pe.querySelector('.posterbg');bg&&bg.insertAdjacentHTML('afterend',coverImg(info.poster))}}
     /* choosing a cover plays its trailer automatically when "پخش خودکار تریلر" is on */
-    if(info.trailer&&$('#autoTrailer').checked&&!toDl)showTrailer(id,true);
+    if($('#autoTrailer').checked&&!toDl)showTrailer(id,true);
   }catch(_){}
 }
 $('#mvBack').onclick=()=>go(prevView,tabs.find(t=>t.dataset.v===prevView)||tabs[0]);
@@ -1327,11 +1394,18 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches&&e.
 
 /* search */
 let searchT;
-$('#q').addEventListener('input',e=>{
-  clearTimeout(searchT);const v=e.target.value.trim();
+const qEl=$('#q');
+function runSearch(){
+  clearTimeout(searchT);const v=qEl.value.trim();
   if(!v)return;
-  searchT=setTimeout(()=>openAll('search','?q='+encodeURIComponent(v)+'&limit=30','نتایج جستجو: '+v),280);
+  qEl.value='';
+  openAll('search','?q='+encodeURIComponent(v)+'&limit=30','نتایج جستجو: '+v);
+}
+qEl.addEventListener('input',()=>{
+  clearTimeout(searchT);
+  if(qEl.value.trim())searchT=setTimeout(runSearch,800);
 });
+qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();runSearch();qEl.blur()}});
 
 /* ---------- locks: zoom + copy outside inputs ---------- */
 const okEl=t=>((t&&t.nodeType===3?t.parentElement:t)||document.body).closest('input,textarea,select');
@@ -1346,11 +1420,72 @@ const SPK='<path d="M4 9.5v5h4l5 4v-13l-5 4z"/>';
 const PI={play:ic('<path d="M8 5.5v13l11-6.5z"/>',1),pause:ic('<path d="M8 5v14M16 5v14"/>'),prev:ic('<path d="M6 5v14"/><path d="M19 5.5v13L9 12z"/>',1),next:ic('<path d="M18 5v14"/><path d="M5 5.5v13L15 12z"/>',1),vol:ic(SPK+'<path d="M16.5 9a4 4 0 010 6M19 6.5a7.5 7.5 0 010 11"/>'),mute:ic(SPK+'<path d="M17 9.5l4 5M21 9.5l-4 5"/>'),list:ic('<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>'),gear:ic('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>'),fs:ic('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),x:ic('<path d="M6 6l12 12M18 6L6 18"/>')};
 const pl=document.createElement('div');pl.className='pl';pl.hidden=true;pl.dir='ltr';pl.setAttribute('role','dialog');pl.setAttribute('aria-modal','true');
 const pb=(id,k,l)=>`<button class="pib" id="${id}" aria-label="${l}">${PI[k]}</button>`;
-pl.innerHTML=`<video id="plV" playsinline preload="metadata"></video><div class="plt">${pb('plX','x','بستن')}<div class="plh"><b id="plT"></b><small id="plS"></small></div></div><button class="plbig" id="plBig" tabindex="-1" aria-hidden="true"></button><div class="plc"><div class="seek" id="plSk"><i class="buf" id="plBuf"></i><i class="pr" id="plPr"></i><u id="plKn"></u></div><div class="plr">${pb('plPP','play','پخش')}${pb('plPv','prev','قسمت قبلی')}${pb('plNx','next','قسمت بعدی')}<span class="tm" id="plTm">0:00 / 0:00</span><i class="sp"></i>${pb('plMu','vol','صدا')}${pb('plEp','list','لیست قسمت‌ها')}${pb('plSt','gear','تنظیمات')}${pb('plFs','fs','تمام‌صفحه')}</div></div><div class="pm" id="plM" hidden></div><aside class="pls" id="plL" hidden><h3><span>انتخاب قسمت</span></h3><div class="li" id="plLi"></div></aside>`;
+pl.innerHTML=`<video id="plV" playsinline preload="metadata"></video><div class="plsub" id="plSub" hidden><span></span></div><div class="plt">${pb('plX','x','بستن')}<div class="plh"><b id="plT"></b><small id="plS"></small></div></div><button class="plbig" id="plBig" tabindex="-1" aria-hidden="true"></button><div class="plc"><div class="seek" id="plSk"><i class="buf" id="plBuf"></i><i class="pr" id="plPr"></i><u id="plKn"></u></div><div class="plr">${pb('plPP','play','پخش')}${pb('plPv','prev','قسمت قبلی')}${pb('plNx','next','قسمت بعدی')}<span class="tm" id="plTm">0:00 / 0:00</span><i class="sp"></i>${pb('plMu','vol','صدا')}${pb('plEp','list','لیست قسمت‌ها')}${pb('plSt','gear','تنظیمات')}${pb('plFs','fs','تمام‌صفحه')}</div></div><div class="pm" id="plM" hidden></div><aside class="pls" id="plL" hidden><h3><span>انتخاب قسمت</span></h3><div class="li" id="plLi"></div></aside>`;
 document.body.appendChild(pl);
-const V=$('#plV'),P={m:null,ep:0,season:null,auto:true,cur:'1080p',sp:1,st:[],t0:0,it:0};
+const V=$('#plV'),P={m:null,ep:0,season:null,auto:true,cur:'1080p',sp:1,st:[],t0:0,it:0,subSeq:0,subBlob:null,subTrack:null,subSize:1};
 const E=()=>P.m.eps[P.ep],AV=()=>QO.filter(q=>E().src[q]),pk=()=>pl.classList.contains('pick'),tr=()=>{if(lang==='en')applyInstant(pl,'en')};
 const ptm=t=>{t=Math.max(0,t|0);const h=t/3600|0,m=(t%3600)/60|0,s=t%60;return(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s).padStart(2,'0')};
+/* Subtitles are attached automatically for every episode that has one;
+   there is deliberately no on/off control in the player UI. */
+const SUB_MIN=.6,SUB_MAX=2.2;
+function readSubSize(){try{const v=+localStorage.getItem('lm_sub_size');return v>=SUB_MIN&&v<=SUB_MAX?v:1}catch(_){return 1}}
+P.subSize=readSubSize();pl.style.setProperty('--sub-scale',P.subSize);
+function applySubScale(v){
+  P.subSize=Math.min(SUB_MAX,Math.max(SUB_MIN,Number(v)||1));
+  pl.style.setProperty('--sub-scale',P.subSize);
+  try{localStorage.setItem('lm_sub_size',String(P.subSize))}catch(_){}
+}
+function clearSubs(){
+  P.subSeq++;
+  P.subTrack=null;
+  const box=$('#plSub');
+  if(box){box.hidden=true;const s=box.firstElementChild;if(s)s.textContent=''}
+  [...V.querySelectorAll('track')].forEach(t=>{try{t.track.mode='disabled'}catch(_){};t.remove()});
+  try{for(let i=V.textTracks.length-1;i>=0;i--)V.textTracks[i].mode='disabled'}catch(_){}
+  if(P.subBlob){URL.revokeObjectURL(P.subBlob);P.subBlob=null}
+}
+function updateSub(){
+  const box=$('#plSub');if(!box)return;
+  let lines=[];
+  const t=P.subTrack&&P.subTrack.track;
+  if(t&&t.activeCues){
+    for(let i=0;i<t.activeCues.length;i++){
+      const cue=t.activeCues[i],text=String(cue.text||'').trim();
+      if(text&&!lines.includes(text))lines.push(text);
+    }
+  }
+  if(!lines.length){box.hidden=true;box.firstElementChild.textContent='';return}
+  box.firstElementChild.textContent=lines.join('\n');
+  box.hidden=false;
+}
+function mountSub(text){
+  const blob=new Blob([text],{type:'text/vtt'});
+  P.subBlob=URL.createObjectURL(blob);
+  const track=document.createElement('track');
+  track.kind='subtitles';track.label='فارسی';track.srclang='fa';track.src=P.subBlob;
+  const ready=()=>{try{track.track.mode='hidden'}catch(_){};P.subTrack=track;updateSub()};
+  track.addEventListener('load',ready);
+  track.addEventListener('cuechange',updateSub);
+  V.appendChild(track);P.subTrack=track;
+  try{track.track.mode='hidden'}catch(_){}
+  ready();
+}
+async function loadSub(){
+  clearSubs();
+  const e=E();if(!e)return;
+  const seq=P.subSeq;
+  let q='';
+  if(e.sub)q='u='+encodeURIComponent(e.sub);
+  else if(e.soft){const v=e.src[P.cur]||Object.values(e.src)[0];if(!v)return;q='u='+encodeURIComponent(v)}
+  else return;
+  try{
+    const r=await fetch('/api/subtitle?'+q,{credentials:'same-origin'});
+    if(!r.ok)return;
+    const text=await r.text();
+    if(seq!==P.subSeq||pl.hidden||!text.trim())return;
+    mountSub(text);
+  }catch(_){}
+}
 /* auto quality: connection speed + screen size decide the start level; stalls step down, a long healthy buffer steps up */
 const scr=()=>{const h=innerHeight*devicePixelRatio;return h>=1700?0:h>=900?1:h>=600?2:3};
 const autoQ=()=>{const c=navigator.connection,d=c&&c.saveData?1:c&&c.downlink,w=d==null?1:d>=20?0:d>=7?1:d>=3.5?2:3,i=Math.max(w,scr()),av=AV();return av.find(q=>QO.indexOf(q)>=i)||av[av.length-1]};
@@ -1366,16 +1501,17 @@ function list(){
   $('#plLi').innerHTML=chips+rows;$('#plL').dir=document.documentElement.dir;tr();
 }
 function nav(){const n=P.m.eps.length;$('#plEp').hidden=n<2;$('#plPv').hidden=$('#plNx').hidden=n<2;$('#plPv').disabled=P.ep<1;$('#plNx').disabled=P.ep>=n-1}
-function start(i){P.ep=i;pl.classList.remove('pick');$('#plL').hidden=$('#plM').hidden=true;P.st=[];if(P.auto||!E().src[P.cur])P.auto=true,P.cur=autoQ();src(P.cur,0,true);list();nav();wake()}
-function openPlayer(m){P.m=m;P.season=null;P.auto=true;V.removeAttribute('src');$('#plT').textContent=m.title;pl.hidden=false;document.body.style.overflow='hidden';nav();
+function start(i){clearSubs();P.ep=i;pl.classList.remove('pick');$('#plL').hidden=$('#plM').hidden=true;P.st=[];if(P.auto||!E().src[P.cur])P.auto=true,P.cur=autoQ();src(P.cur,0,true);list();nav();wake();loadSub()}
+function openPlayer(m){P.m=m;P.season=null;P.auto=true;clearSubs();V.removeAttribute('src');$('#plT').textContent=m.title;pl.hidden=false;document.body.style.overflow='hidden';nav();
   if(m.eps.length>1){pl.classList.add('pick');P.ep=-1;$('#plS').textContent='';list();$('#plL').hidden=false}else{P.ep=0;start(0)}tr();$('#plX').focus()}
-function closePlayer(){V.pause();V.removeAttribute('src');V.load();clearTimeout(P.it);if(document.fullscreenElement)document.exitFullscreen();pl.hidden=true;pl.classList.remove('idle');document.body.style.overflow=''}
+function closePlayer(){clearSubs();V.pause();V.removeAttribute('src');V.load();clearTimeout(P.it);if(document.fullscreenElement)document.exitFullscreen();pl.hidden=true;pl.classList.remove('idle');document.body.style.overflow=''}
 function wake(){pl.classList.remove('idle');clearTimeout(P.it);if(!V.paused&&$('#plM').hidden&&!pk())P.it=setTimeout(()=>pl.classList.add('idle'),2800)}
-function menu(){const e=E(),av=AV();$('#plM').innerHTML=`<div class="g"><span>کیفیت</span></div><button class="mi${P.auto?' on':''}" data-q="auto"><span>خودکار</span><small dir="ltr">${P.auto?P.cur:''}</small></button>`+av.map(q=>`<button class="mi${!P.auto&&P.cur===q?' on':''}" data-q="${q}"><span dir="ltr">${q}</span></button>`).join('')+`<div class="g"><span>سرعت</span></div>`+[.5,1,1.25,1.5,2].map(x=>`<button class="mi${P.sp===x?' on':''}" data-s="${x}"><span dir="ltr">${x}×</span></button>`).join('');$('#plM').dir=document.documentElement.dir;tr()}
+function menu(){const e=E(),av=AV();$('#plM').innerHTML=`<div class="g"><span>اندازه زیرنویس</span></div><div class="subsize"><span>کوچک</span><input id="plSubSize" type="range" min="${SUB_MIN}" max="${SUB_MAX}" step="0.1" value="${P.subSize}" aria-label="اندازه زیرنویس"><span>بزرگ</span></div>`+`<div class="g"><span>کیفیت</span></div><button class="mi${P.auto?' on':''}" data-q="auto"><span>خودکار</span><small dir="ltr">${P.auto?P.cur:''}</small></button>`+av.map(q=>`<button class="mi${!P.auto&&P.cur===q?' on':''}" data-q="${q}"><span dir="ltr">${q}</span></button>`).join('')+`<div class="g"><span>سرعت</span></div>`+[.5,1,1.25,1.5,2].map(x=>`<button class="mi${P.sp===x?' on':''}" data-s="${x}"><span dir="ltr">${x}×</span></button>`).join('');$('#plM').dir=document.documentElement.dir;tr()}
 function fs(){const f=document.fullscreenElement||document.webkitFullscreenElement;if(f)(document.exitFullscreen||document.webkitExitFullscreen).call(document);else if(pl.requestFullscreen)pl.requestFullscreen().catch(()=>{});else if(pl.webkitRequestFullscreen)pl.webkitRequestFullscreen();else if(V.webkitEnterFullscreen)V.webkitEnterFullscreen()}
 const ui=()=>{const d=V.duration||0,t=V.currentTime||0,f=d?t/d*100:0;$('#plPr').style.width=f+'%';$('#plKn').style.left=f+'%';$('#plTm').textContent=ptm(t)+' / '+ptm(d);if(d&&V.buffered.length){let b=0;for(let i=0;i<V.buffered.length;i++)if(V.buffered.start(i)<=t+.5)b=V.buffered.end(i);$('#plBuf').style.width=b/d*100+'%'}};
 const grow=()=>{if(!P.auto||Date.now()-P.t0<45000||!V.buffered.length)return;const t=V.currentTime,e=V.buffered.end(V.buffered.length-1),up=QO.slice(0,QO.indexOf(P.cur)).reverse().find(q=>E().src[q]&&QO.indexOf(q)>=scr());if(up&&e-t>30)src(up,t,!V.paused)};
-V.addEventListener('timeupdate',()=>{ui();grow()});['progress','durationchange'].forEach(t=>V.addEventListener(t,ui));
+V.addEventListener('timeupdate',()=>{ui();grow();updateSub()});['progress','durationchange'].forEach(t=>V.addEventListener(t,ui));
+V.addEventListener('seeked',updateSub);
 V.addEventListener('play',()=>{$('#plPP').innerHTML=PI.pause;wake()});V.addEventListener('pause',()=>{$('#plPP').innerHTML=PI.play;wake()});
 V.addEventListener('volumechange',()=>$('#plMu').innerHTML=V.muted||!V.volume?PI.mute:PI.vol);
 V.addEventListener('ended',()=>{P.ep<P.m.eps.length-1?start(P.ep+1):wake()});
@@ -1387,6 +1523,7 @@ $('#plEp').onclick=()=>{$('#plM').hidden=true;const L=$('#plL');L.hidden=!L.hidd
 $('#plSt').onclick=()=>{$('#plL').hidden=true;const M=$('#plM');if(M.hidden)menu();M.hidden=!M.hidden;wake()};
 $('#plLi').onclick=e=>{const s=e.target.closest('.ps');if(s){P.season=+s.dataset.s;list();return}const b=e.target.closest('.ei');if(b)start(+b.dataset.i)};
 $('#plM').onclick=e=>{const b=e.target.closest('.mi');if(!b)return;if(b.dataset.s){P.sp=+b.dataset.s;V.playbackRate=P.sp}else if(b.dataset.q==='auto'){P.auto=true;const q=autoQ();q!==P.cur?src(q,V.currentTime,!V.paused):info()}else{P.auto=false;b.dataset.q!==P.cur?src(b.dataset.q,V.currentTime,!V.paused):info()}menu()};
+$('#plM').addEventListener('input',e=>{if(e.target&&e.target.id==='plSubSize')applySubScale(e.target.value)});
 const sk=$('#plSk');let dr=0;const sv=e=>{const r=sk.getBoundingClientRect();if(V.duration)V.currentTime=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))*V.duration};
 sk.addEventListener('pointerdown',e=>{dr=1;sk.classList.add('d');sk.setPointerCapture(e.pointerId);sv(e)});sk.addEventListener('pointermove',e=>{if(dr)sv(e)});['pointerup','pointercancel'].forEach(t=>sk.addEventListener(t,()=>{dr=0;sk.classList.remove('d')}));
 ['pointermove','pointerdown','keydown'].forEach(t=>pl.addEventListener(t,wake));
@@ -1435,7 +1572,7 @@ function startApp(){
   try{$('#autoTrailer').checked=localStorage.getItem('lm_auto')!=='0'}catch(_){}
   renderCategories();loadHome();loadFeatured();renderList();
 }
-$('#autoTrailer').onchange=e=>{try{localStorage.setItem('lm_auto',e.target.checked?'1':'0')}catch(_){};if(!e.target.checked){$('#trailerBox').hidden=true;$('#trailerFrame').src=''}};
+$('#autoTrailer').onchange=e=>{try{localStorage.setItem('lm_auto',e.target.checked?'1':'0')}catch(_){};if(!e.target.checked)stopTrailer()};
 
 $('#changeEmailBtn').onclick=async()=>{
   const email=$('#newEmail').value.trim(),password=$('#emailPass').value;

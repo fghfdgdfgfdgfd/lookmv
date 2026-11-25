@@ -148,13 +148,19 @@ function main() {
   atlas.items.forEach((it, i) => add(fromAtlas(it, i)));
   animex.categories.forEach((c, ci) => c.titles.forEach((t, ti) => add(fromAnimex(t, ci, ti))));
 
-  const movies = [...map.values()].map(m => ({
-    ...m,
-    key: undefined,
-    // very long series can carry thousands of mirrored links; keep a sane cap
-    links: m.links.slice(0, 200),
-    linkCount: m.links.length,
-  }));
+  const isSub = l => /\.(srt|ssa|ass|vtt)(\?|$)/i.test(String(l.url || '').split('#')[0]);
+  const movies = [...map.values()].map(m => {
+    // very long series can carry thousands of mirrored links; keep a sane cap,
+    // but never drop the separate subtitle files (they sit after the videos)
+    const subs = m.links.filter(isSub).map(l => ({ ...l, sub: true }));
+    const videos = m.links.filter(l => !isSub(l)).slice(0, 200);
+    return {
+      ...m,
+      key: undefined,
+      links: [...videos, ...subs],
+      linkCount: videos.length + subs.length,
+    };
+  });
   movies.sort((a, b) => String(b.added).localeCompare(String(a.added)) || a.title.localeCompare(b.title, 'fa'));
 
   const genres = [...new Set(movies.flatMap(m => m.genres))].filter(Boolean).sort((a, b) => a.localeCompare(b, 'fa'));

@@ -1,6 +1,6 @@
 {
   "omdbKey": "",
   "tmdbKey": "",
-  "youtubeFallback": true,
+  "youtubeFallback": false,
   "note": "API keys are optional. On Railway, set TMDB_API_KEY and/or OMDB_API_KEY as environment variables. The Top 10 and Latest home feeds refresh once per Tehran day from TMDb when a key is configured; otherwise the local catalog is used."
 }
