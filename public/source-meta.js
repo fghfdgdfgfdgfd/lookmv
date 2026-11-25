@@ -92,7 +92,8 @@
   function getJSON(url, timeout) {
     var ctl = new AbortController();
     var t = setTimeout(function () { ctl.abort(); }, timeout || 9000);
-    return fetch(url, { signal: ctl.signal, credentials: 'omit' })
+    var own = /^\//.test(String(url || ''));
+    return fetch(url, { signal: ctl.signal, credentials: own ? 'same-origin' : 'omit' })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .finally(function () { clearTimeout(t); });
   }
@@ -264,6 +265,71 @@
     return out;
   }
 
+  /* ---------------- zardfilm / doostihaa ---------------- */
+  /* Both are WordPress sites: search their posts, pick the closest title and
+   * reuse the featured image / excerpt / IMDb rating found there. */
+  function wpScore(post, m) {
+    var title = String(post.title && post.title.rendered || '')
+      .replace(/^دانلود\s*(?:و\s*تماشای\s*)?(?:فیلم|سریال|انیمیشن|انیمه|مستند)?\s*/i, '');
+    var a = norm(title), b = coreTitle(m);
+    var s = 0;
+    if (a === b) s -= 40;
+    else if (a && b && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0)) s -= 24;
+    else {
+      var aw = a.split(' '), bw = b.split(' '), hit = 0;
+      bw.forEach(function (w) { if (w.length > 2 && aw.indexOf(w) >= 0) hit++; });
+      if (bw.length) s -= Math.round(30 * hit / bw.length);
+    }
+    var y1 = year4(post.title && post.title.rendered), y2 = year4(m.year);
+    if (y1 && y2 && y1 !== y2) s += 8;
+    return s;
+  }
+  function wpRating(s) {
+    var v = String(s || '').replace(/[\u06f0-\u06f9]/g, function (c) { return String(c.charCodeAt(0) - 0x06f0); });
+    var m = v.match(/(?:امتیاز(?:\s*فیلم)?|IMDb|rating)[^\d]{0,18}(\d{1,2}(?:[.,]\d{1,2})?)/i)
+      || v.match(/(?:امتیاز|IMDb)[^\d]{0,18}(\d{1,2}(?:[.,]\d{1,2})?)\s*از\s*10/i);
+    if (!m) return '';
+    var n = parseFloat(m[1].replace(',', '.'));
+    return isFinite(n) && n > 0 && n <= 10 ? num(n) : '';
+  }
+  async function wpMeta(base, m, site, label, proxy) {
+    function searchUrl(q) {
+      var path = 'posts?search=' + encodeURIComponent(q) + '&per_page=5&_embed=1';
+      return proxy ? base + encodeURIComponent(path) : base + path;
+    }
+    var q = coreTitle(m);
+    var r = await getJSON(searchUrl(q));
+    var list = Array.isArray(r) ? r : [];
+    if (!list.length && m.title !== m.titleEn) {
+      r = await getJSON(searchUrl(norm(m.title)));
+      list = Array.isArray(r) ? r : [];
+    }
+    if (!list.length) throw new Error(site + ': not found');
+    list.sort(function (a, b) { return wpScore(a, m) - wpScore(b, m); });
+    var post = list[0];
+    var media = (post._embedded && post._embedded['wp:featuredmedia'] || [])[0] || {};
+    var sizes = media.media_details && media.media_details.sizes || {};
+    var poster = media.source_url || (sizes.full && sizes.full.source_url) ||
+      (sizes.medium && sizes.medium.source_url) || '';
+    var plot = cleanPlot(stripHTML(post.excerpt && post.excerpt.rendered));
+    var intro = stripHTML(post.content && post.content.rendered).slice(0, 500);
+    var rating = wpRating(plot + ' ' + intro);
+    return {
+      poster: poster,
+      backdrop: '',
+      plot: plot,
+      year: m.year || year4(post.title && post.title.rendered) || String(post.date || '').slice(0, 4),
+      rating: rating,
+      ratingLabel: rating ? 'IMDb' : '',
+      imdb: rating,
+      vote: '',
+      sources: [label],
+      site: site
+    };
+  }
+  function zardMeta(m) { return wpMeta('/api/zard?path=', m, 'zardfilm', 'zardfilm.in', true); }
+  function doostiMeta(m) { return wpMeta('https://www.doostihaa.com/wp-json/wp/v2/', m, 'doostihaa', 'doostihaa.com'); }
+
   /* ---------------- public API ---------------- */
   function key(m) {
     return [m.source || '', m.titleEn || m.title || '', m.year || '', m.type || ''].join('|').toLowerCase();
@@ -274,7 +340,10 @@
     if (cached && (!full || cached.plot || !cached.poster)) return cached;
     var d;
     try {
-      d = m.source === 'animex' ? await animexMeta(m, full) : await atlasMeta(m);
+      d = m.source === 'animex' ? await animexMeta(m, full)
+        : m.source === 'zardfilm' ? await zardMeta(m)
+          : m.source === 'doostihaa' ? await doostiMeta(m)
+            : await atlasMeta(m);
     } catch (e) { d = null; }
     if (d) {
       if (cached) d = Object.assign({}, cached, d);

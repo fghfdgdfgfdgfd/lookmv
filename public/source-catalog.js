@@ -1,16 +1,23 @@
 /*
- * source-catalog.js — live catalog straight from the two source sites.
+ * source-catalog.js — live catalog straight from the four source sites.
  * Runs in the browser. No local movie database is needed for browsing;
  * data/movies.json is only used as a fallback (wired up from index.html).
  *
- * animex.pro     /wp-json/app/v1/{home,genres,items,search,items/<id>}
- * atlasmind.top  /wp-json/wp/v2/{posts,series,categories}?_embed=1
+ * animex.pro       /wp-json/app/v1/{home,genres,items,search,items/<id>}
+ * atlasmind.top    /wp-json/wp/v2/{posts,series,categories}?_embed=1
+ * zardfilm.in      /wp-json/wp/v2/{posts,categories}?_embed=1
+ *                  (download links come from /api/source-links on our own server)
+ * doostihaa.com    /wp-json/doostiha/v1/search?q=...   (poster / year / IMDb)
+ *                  /wp-json/wp/v2/{posts,tags}?_embed=1
  */
 (function () {
   'use strict';
 
   var AX = 'https://animex.pro/wp-json/app/v1/';
   var AM = 'https://www.atlasmind.top/wp-json/wp/v2/';
+  var ZF = 'https://zardfilm.in/wp-json/wp/v2/';
+  var DH = 'https://www.doostihaa.com/wp-json/wp/v2/';
+  var DHS = 'https://www.doostihaa.com/wp-json/doostiha/v1/search';
   var itemCache = new Map();
 
   function getJSON(url, timeout, signal) {
@@ -20,9 +27,16 @@
       if (signal.aborted) ctl.abort();
       else signal.addEventListener('abort', function () { ctl.abort(); }, { once: true });
     }
-    return fetch(url, { signal: ctl.signal, credentials: 'omit' })
+    /* our own /api/* bridge needs the session cookie; third-party sites do not */
+    var own = /^\//.test(String(url || ''));
+    return fetch(url, { signal: ctl.signal, credentials: own ? 'same-origin' : 'omit' })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .finally(function () { clearTimeout(t); });
+  }
+  /* zardfilm refuses browser user-agents, so every request for that site goes
+   * through our own server (same-origin, with the session cookie). */
+  function zardJSON(path, timeout, signal) {
+    return getJSON('/api/zard?path=' + encodeURIComponent(path), timeout, signal);
   }
   function stripHTML(s) {
     var d = document.createElement('div'); d.innerHTML = String(s || '');
@@ -43,6 +57,62 @@
       .replace(/(\[\s*(?:&hellip;|…|\.\.\.)\s*\]|(?:&hellip;|…|\.\.\.))\s*$/i, '')
       .replace(/\[…\]\s*$/, '').trim();
   }
+  /* Persian digits are common in titles / ratings on the two new sites. */
+  function faNum(s) {
+    return String(s || '').replace(/[\u06f0-\u06f9]/g, function (c) { return String(c.charCodeAt(0) - 0x06f0); });
+  }
+  function ratingText(s) {
+    var v = faNum(s);
+    var m = v.match(/(?:امتیاز(?:\s*فیلم)?|IMDb|rating)[^\d]{0,18}(\d{1,2}(?:[.,]\d{1,2})?)/i)
+      || v.match(/(?:امتیاز|IMDb)[^\d]{0,18}(\d{1,2}(?:[.,]\d{1,2})?)\s*از\s*10/i);
+    if (!m) return '';
+    var n = parseFloat(m[1].replace(',', '.'));
+    return isFinite(n) && n > 0 && n <= 10 ? num(n) : '';
+  }
+  /* Shared title parser for zardfilm / doostihaa. WP titles are marketing
+   * strings like "دانلود فیلم X 2025 با زیرنویس فارسی ... English Title 2025". */
+  function parseWpTitle(rendered) {
+    var s = stripHTML(rendered)
+      .replace(/^دانلود\s*(?:و\s*تماشای\s*)?(?:رایگان\s*)?(?:فیلم(?:\s*(?:سینمایی|ایرانی|خارجی))?|سریال|انیمیشن|انیمه|مستند|برنامه\s*تلویزیونی|کارتون)?\s*/i, '')
+      .replace(/^فصل\s*(?:\d+|اول|دوم|سوم|چهارم|پنجم)\s*(?:از\s*)?سریال\s*/i, '');
+    var prev;
+    do {
+      prev = s;
+      s = s.replace(/\s*(?:بدون\s*سانسور|زیرنویس\s*فارسی\s*چسبیده|زیرنویس\s*فارسی|دوبله\s*فارسی|چسبیده|با\s*لینک\s*مستقیم|تماشای\s*رایگان|دانلود\s*رایگان|رایگان|نسخه\s*BluRay[^\s]*|با)\s*$/i, '');
+    } while (s !== prev);
+    s = s.replace(/\s*\|\s*.*$/, '').trim();
+    var f = faNum(s);
+    var year = year4(f);
+    var ym = f.match(/(19|20)\d{2}(?:\s*[-–]\s*(?:(19|20)\d{2}|\d{2}))?\s*$/);
+    if (ym) s = s.slice(0, ym.index).trim();
+    var en = '', fa = s;
+    var m = s.match(/([A-Za-z][A-Za-z0-9:.,'()\-&!?]{1,}(?:[ ][A-Za-z0-9:.,'()\-&!?]+)*)/);
+    if (m) {
+      en = m[1].trim().replace(/\s*(?:19|20)\d{2}(?:\s*[-–]\s*(?:\d{2}|\d{4}))?\s*$/, '').trim();
+      fa = (s.slice(0, m.index) + ' ' + s.slice(m.index + m[1].length))
+        .replace(/[A-Za-z]+/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    fa = fa.replace(/\s+(?:با|و|از|در|به)\s*$/, '').trim();
+    return { title: fa || en || s, titleEn: en || fa || s, year: year };
+  }
+  function typeFromText(s) {
+    var v = String(s || '');
+    if (/انیمه|انیمیشن|کارتون|anime|animation/i.test(v)) return 'anime';
+    if (/سریال|serial|series/i.test(v)) return 'series';
+    return 'movie';
+  }
+  var JUNK_TERM = /^(?:دانلود|تماشا|لینک\s*مستقیم|زیرنویس|دوبله|چسبیده|بدون\s*سانسور|نسخه|کیفیت|برترین|جدیدترین|بزودی|تک\s*قسمتی|آرشیوی|رایگان|پخش\s*آنلاین|معرفی|اخبار|IMDb|قسمت|فصل)/i;
+  function genreNames(post) {
+    var list = (post._embedded && post._embedded['wp:term'] || []);
+    var terms = Array.isArray(list) ? list.flat() : [];
+    var out = [];
+    terms.forEach(function (x) {
+      var n = String((x && x.name) || '').replace(/^دانلود\s*(?:فیلم|سریال)\s*/i, '').trim();
+      if (n && !JUNK_TERM.test(n) && out.indexOf(n) < 0) out.push(n);
+    });
+    return out.slice(0, 10);
+  }
+  function isMediaTitle(s) { return /دانلود|تماشا/i.test(String(s || '').slice(0, 50)); }
   function remember(m) { if (m && m.id) itemCache.set(m.id, m); return m; }
   function settled(p) { return p.then(function (v) { return { status: 'fulfilled', value: v }; }, function (e) { return { status: 'rejected', reason: e }; }); }
 
@@ -140,12 +210,66 @@
     });
   }
 
+  function mapZard(post) {
+    var names = parseWpTitle(post.title && post.title.rendered);
+    var genres = genreNames(post);
+    var plot = cleanPlot(stripHTML(post.excerpt && post.excerpt.rendered));
+    var rating = ratingText(plot);
+    return remember({
+      id: 'zf-' + post.id, title: names.title, titleEn: names.titleEn,
+      year: names.year || String(post.date || '').slice(0, 4),
+      type: typeFromText(String(post.title && post.title.rendered) + ' ' + genres.join(' ')),
+      source: 'zardfilm', sourceUrl: post.link || '',
+      genres: genres, genre: genres[0] || '', country: '', language: '',
+      siteRating: rating, ratingLabel: rating ? 'IMDb' : '', imdb: rating, vote: '',
+      poster: posterOf(post), backdrop: '', plot: plot,
+      linkCount: 0, topQ: '', added: post.date || '',
+      _zfId: post.id, alsoIn: null
+    });
+  }
+  function mapDoosti(post) {
+    var names = parseWpTitle(post.title && post.title.rendered);
+    var genres = genreNames(post);
+    var plot = cleanPlot(stripHTML(post.excerpt && post.excerpt.rendered));
+    var intro = stripHTML(post.content && post.content.rendered).slice(0, 500);
+    var rating = ratingText(plot + ' ' + intro);
+    return remember({
+      id: 'dh-' + post.id, title: names.title, titleEn: names.titleEn,
+      year: names.year || String(post.date || '').slice(0, 4),
+      type: typeFromText(String(post.title && post.title.rendered) + ' ' + genres.join(' ')),
+      source: 'doostihaa', sourceUrl: post.link || '',
+      genres: genres, genre: genres[0] || '', country: '', language: '',
+      siteRating: rating, ratingLabel: rating ? 'IMDb' : '', imdb: rating, vote: '',
+      poster: posterOf(post), backdrop: '', plot: plot,
+      linkCount: 0, topQ: '', added: post.date || '',
+      _dhId: post.id, alsoIn: null
+    });
+  }
+  /* The dedicated doostihaa search API is the fastest, richest source: it
+   * already carries poster, year, IMDb and a human-readable type label. */
+  function mapDoostiHit(hit) {
+    var names = parseWpTitle(hit.title);
+    var label = String(hit.type_label || '');
+    var rating = num(hit.imdb);
+    return remember({
+      id: 'dh-' + hit.id, title: names.title, titleEn: names.titleEn,
+      year: year4(faNum(hit.year)) || names.year,
+      type: typeFromText(label + ' ' + String(hit.title)),
+      source: 'doostihaa', sourceUrl: hit.url || '',
+      genres: label ? [label] : [], genre: label || '', country: '', language: '',
+      siteRating: rating, ratingLabel: rating ? 'IMDb' : '', imdb: rating, vote: '',
+      poster: hit.poster || '', backdrop: '', plot: '',
+      linkCount: 0, topQ: '', added: '',
+      softSub: !!(hit.is_sub || hit.has_sub), _dhId: hit.id, alsoIn: null
+    });
+  }
+
   /* ---------------- live endpoints ---------------- */
   /* Related genres are merged into a few broad groups so the list stays short.
      Every group remembers which animex genre names / atlasmind category ids it
      contains, so opening a group still shows everything inside it. */
   var GROUP_DEFS = [
-    ['اکشن و ماجراجویی', /\baction|\badventure|اکشن|ماجراجو|جنگی|\bwar\b|وسترن|western|رزمی|martial|ورزش|\bsport/],
+    ['اکشن و ماجراجویی', /\baction|\badventure|اکشن|ماجراجو|جنگی|\bwar\b|وسترن|western|رزمی|martial/],
     ['درام و تاریخی', /\bdrama|درام|تاریخ|\bhistor|بیوگراف|biograph|زندگینامه|سیاسی/],
     ['کمدی و خانوادگی', /\bcomedy|کمدی|طنز|\bfamily|خانواد|\bmusic|موزیک|موسیق/],
     ['ترسناک و هیجان‌انگیز', /\bhorror|ترسناک|وحشت|\bthriller|هیجان|دلهره|\bsuspense/],
@@ -155,8 +279,13 @@
     ['عاشقانه', /\bromance|\bromantic|عاشقانه|رمانتیک/],
     ['مستند', /\bdocumentary|مستند|\breality|رئالیتی|\btalk/],
     ['سریال آسیایی', /\bkorea|کره|\bturk|ترک|\bjapan|ژاپن|\bchin|چین|هند|\bbollywood|\bthai|تایلند|\basia/],
-    ['ایرانی', /\biran|ایران|\bpersian/]
+    ['ایرانی', /\biran|ایران|\bpersian|\bfarsi/],
+    ['کودک و نوجوان', /کودک|نوجوان|\bkids?\b|\bchild/],
+    ['ورزشی', /ورزشی|فوتبال|کشتی|\bsports?\b/],
+    ['موزیکال', /موزیکال|\bmusical|رقص|\bdance/]
   ];
+  /* Categories that carry no genre information (lists, news, coming soon…). */
+  var SKIP_CAT = /IMDb|برترین|جدید|بزودی|تکمیل آرشیو|اخبار|افراد|هنرمند|کالکشن|معرفی|تریلر|پخش آنلاین|رایگان|اسکار|دانلود|فصل|قسمت|نسخه|زیرنویس|دوبله|سانسور/;
   var GROUPS = null, catPromise = null;
   function normName(n) {
     return String(n || '').replace(/[\u200c\u200d]/g, ' ').replace(/ي/g, 'ی').replace(/ك/g, 'ک').toLowerCase();
@@ -169,35 +298,68 @@
   function loadCategories() {
     return Promise.all([
       settled(getJSON(AX + 'genres')),
-      settled(getJSON(AM + 'categories?per_page=100&hide_empty=1'))
+      settled(getJSON(AM + 'categories?per_page=100&hide_empty=1')),
+      settled(zardJSON('categories?per_page=100&hide_empty=1')),
+      settled(getJSON(DH + 'tags?per_page=100&orderby=count&order=desc&hide_empty=1')),
+      settled(getJSON(DH + 'categories?parent=0&per_page=100&hide_empty=1')),
+      settled(zardJSON('tags?per_page=100&orderby=count&order=desc&hide_empty=1'))
     ]).then(function (res) {
-      var ax = res[0], am = res[1], raw = [];
+      var raw = [];
+      function push(name, entry) {
+        name = String(name || '').replace(/^دانلود\s*(?:فیلم|سریال)\s*/i, '').trim();
+        if (!name || (!groupOf(name) && SKIP_CAT.test(name))) return;
+        raw.push(Object.assign({ name: name }, entry));
+      }
+      var ax = res[0], am = res[1], zf = res[2], dht = res[3], dhc = res[4], zft = res[5];
       if (ax.status === 'fulfilled' && ax.value && ax.value.data && ax.value.data.all) {
-        Object.keys(ax.value.data.all).forEach(function (n) { raw.push({ name: n, ax: n, am: null }); });
+        Object.keys(ax.value.data.all).forEach(function (n) { push(n, { ax: n }); });
       }
       if (am.status === 'fulfilled' && Array.isArray(am.value)) {
-        am.value.forEach(function (c) {
-          var n = String(c.name || '').replace(/^دانلود\s*(فیلم|سریال)\s*/i, '').trim();
-          if (n && !/^(Top|Trailerz|تریلر|بزودی|تکمیل آرشیو|برترین|جدیدترین)/i.test(n)) raw.push({ name: n, ax: null, am: c.id });
-        });
+        am.value.forEach(function (c) { push(c.name, { am: c.id }); });
+      }
+      if (zf.status === 'fulfilled' && Array.isArray(zf.value)) {
+        zf.value.forEach(function (c) { push(c.name, { zf: c.id }); });
+      }
+      if (zft.status === 'fulfilled' && Array.isArray(zft.value)) {
+        zft.value.forEach(function (t) { push(t.name, { zfTag: t.id }); });
+      }
+      if (dht.status === 'fulfilled' && Array.isArray(dht.value)) {
+        dht.value.forEach(function (t) { push(t.name, { dhTag: t.id }); });
+      }
+      if (dhc.status === 'fulfilled' && Array.isArray(dhc.value)) {
+        dhc.value.forEach(function (c) { push(c.name, { dhCat: c.id }); });
       }
       if (!raw.length) throw new Error('categories unavailable');
       var groups = {}, loose = {};
       function add(map, key, r) {
-        var g = map[key] || (map[key] = { ax: [], am: [] });
+        var g = map[key] || (map[key] = { ax: [], am: [], zf: [], zfTag: [], dhTag: [], dhCat: [] });
         if (r.ax && g.ax.indexOf(r.ax) < 0) g.ax.push(r.ax);
         if (r.am != null && g.am.indexOf(r.am) < 0) g.am.push(r.am);
+        if (r.zf != null && g.zf.indexOf(r.zf) < 0) g.zf.push(r.zf);
+        if (r.zfTag != null && g.zfTag.indexOf(r.zfTag) < 0) g.zfTag.push(r.zfTag);
+        if (r.dhTag != null && g.dhTag.indexOf(r.dhTag) < 0) g.dhTag.push(r.dhTag);
+        if (r.dhCat != null && g.dhCat.indexOf(r.dhCat) < 0) g.dhCat.push(r.dhCat);
       }
       raw.forEach(function (r) {
         var g = groupOf(r.name);
         if (g) add(groups, g, r); else add(loose, r.name.trim(), r);
       });
-      var looseKeys = Object.keys(loose).sort(function (a, b) { return a.localeCompare(b, 'fa'); });
+      var looseKeys = Object.keys(loose).filter(function (k) { return !SKIP_CAT.test(k); })
+        .sort(function (a, b) { return a.localeCompare(b, 'fa'); });
       var names = GROUP_DEFS.map(function (d) { return d[0]; }).filter(function (n) { return groups[n]; });
-      if (looseKeys.length <= 6) {
+      if (looseKeys.length <= 5) {
         looseKeys.forEach(function (k) { groups[k] = loose[k]; names.push(k); });
-      } else {
-        looseKeys.forEach(function (k) { add(groups, 'متفرقه', { ax: loose[k].ax[0] || null, am: loose[k].am[0] == null ? null : loose[k].am[0] }); loose[k].ax.slice(1).forEach(function (x) { add(groups, 'متفرقه', { ax: x, am: null }); }); });
+      } else if (looseKeys.length) {
+        looseKeys.forEach(function (k) {
+          var r = loose[k];
+          add(groups, 'متفرقه', {
+            ax: r.ax[0] || null, am: r.am[0] == null ? null : r.am[0],
+            zf: r.zf[0] == null ? null : r.zf[0],
+            zfTag: r.zfTag[0] == null ? null : r.zfTag[0],
+            dhTag: r.dhTag[0] == null ? null : r.dhTag[0],
+            dhCat: r.dhCat[0] == null ? null : r.dhCat[0]
+          });
+        });
         names.push('متفرقه');
       }
       GROUPS = groups;
@@ -210,12 +372,14 @@
   }
 
   async function latest(page, limit) {
-    var per = Math.max(2, Math.ceil(limit / 2));
+    var per = Math.max(2, Math.ceil((limit || 24) / 4));
     var p = page || 1;
     var res = await Promise.all([
       settled(getJSON(AX + 'items?sort=latest&per_page=' + per + '&page=' + p)),
       settled(getJSON(AM + 'posts?per_page=' + per + '&page=' + p + '&orderby=date&order=desc&_embed=1')),
-      settled(getJSON(AM + 'series?per_page=' + per + '&page=' + p + '&orderby=date&order=desc&_embed=1'))
+      settled(getJSON(AM + 'series?per_page=' + per + '&page=' + p + '&orderby=date&order=desc&_embed=1')),
+      settled(zardJSON('posts?per_page=' + per + '&page=' + p + '&orderby=date&order=desc&_embed=1')),
+      settled(getJSON(DH + 'posts?per_page=' + per + '&page=' + p + '&orderby=date&order=desc&_embed=1'))
     ]);
     var items = [], hasMore = false;
     if (res[1].status === 'fulfilled') {
@@ -231,27 +395,53 @@
       (d.data || []).forEach(function (x) { items.push(mapAx(x)); });
       if (d.meta && d.meta.page < d.meta.total_pages) hasMore = true;
     }
+    if (res[3].status === 'fulfilled') {
+      (res[3].value || []).forEach(function (x) { items.push(mapZard(x)); });
+      if (res[3].value.length >= per) hasMore = true;
+    }
+    if (res[4].status === 'fulfilled') {
+      (res[4].value || []).filter(function (x) { return isMediaTitle(x.title && x.title.rendered); })
+        .forEach(function (x) { items.push(mapDoosti(x)); });
+      if (res[4].value.length >= per) hasMore = true;
+    }
     if (!items.length) throw new Error('latest unavailable');
     return { items: items, hasMore: hasMore };
   }
 
+  /* resolve a category/tag id once, with a sensible fallback for each site */
+  async function findTerm(base, taxonomy, term, fallback) {
+    var r = await settled(getJSON(base + taxonomy + '?search=' + encodeURIComponent(term) + '&per_page=10'));
+    if (r.status === 'fulfilled' && Array.isArray(r.value) && r.value.length) return r.value[0].id;
+    return fallback;
+  }
   async function top(page, limit) {
     var per = Math.max(2, Math.min(limit || 10, 12));
     var p = page || 1;
-    var pair = await Promise.all([
+    var info = await Promise.all([
       settled(getJSON(AX + 'items?sort=rating&per_page=' + per + '&page=' + p)),
-      /* atlasmind's "برترین فیلم ها" category */
-      settled(getJSON(AM + 'categories?search=' + encodeURIComponent('برترین فیلم ها') + '&per_page=20'))
+      findTerm(AM, 'categories', 'برترین فیلم ها', null),
+      findTerm(ZF, 'categories', '250 فیلم برتر IMDB', 6732),
+      findTerm(DH, 'tags', '250 فیلم برتر IMDB', 79659)
     ]);
-    var ax = pair[0], cats = pair[1], am = null;
-    if (cats.status === 'fulfilled' && cats.value.length) {
-      var ids = cats.value.map(function (c) { return c.id; }).join(',');
-      am = await settled(getJSON(AM + 'posts?categories=' + ids + '&per_page=' + per + '&page=' + p + '&_embed=1'));
-    }
+    var ax = info[0], amId = info[1], zfId = info[2], dhId = info[3];
+    var jobs = [];
+    if (amId) jobs.push(settled(getJSON(AM + 'posts?categories=' + amId + '&per_page=' + per + '&page=' + p + '&_embed=1')));
+    if (zfId) jobs.push(settled(zardJSON('posts?categories=' + zfId + '&per_page=' + per + '&page=' + p + '&_embed=1')));
+    if (dhId) jobs.push(settled(getJSON(DH + 'posts?tags=' + dhId + '&per_page=' + per + '&page=' + p + '&_embed=1')));
+    var rest = await Promise.all(jobs);
     var items = [], hasMore = false;
-    if (am && am.status === 'fulfilled') {
-      (am.value || []).forEach(function (x) { items.push(mapAtlas(x, 'movie')); });
-      if (am.value.length >= per) hasMore = true;
+    if (rest[0] && rest[0].status === 'fulfilled') {
+      (rest[0].value || []).forEach(function (x) { items.push(mapAtlas(x, 'movie')); });
+      if (rest[0].value.length >= per) hasMore = true;
+    }
+    if (rest[1] && rest[1].status === 'fulfilled') {
+      (rest[1].value || []).forEach(function (x) { items.push(mapZard(x)); });
+      if (rest[1].value.length >= per) hasMore = true;
+    }
+    if (rest[2] && rest[2].status === 'fulfilled') {
+      (rest[2].value || []).filter(function (x) { return isMediaTitle(x.title && x.title.rendered); })
+        .forEach(function (x) { items.push(mapDoosti(x)); });
+      if (rest[2].value.length >= per) hasMore = true;
     }
     if (ax.status === 'fulfilled') {
       var d = ax.value || {};
@@ -266,13 +456,17 @@
     var p = page || 1, per = limit || 30;
     var term = String(q || '').trim();
     if (!term) throw new Error('empty query');
+    var enc = encodeURIComponent(term);
+    var dhOffset = (p - 1) * Math.min(per, 10);
     var res = await Promise.all([
-      settled(getJSON(AX + 'search?q=' + encodeURIComponent(term) + '&per_page=' + per + '&page=' + p)),
-      settled(getJSON(AM + 'posts?search=' + encodeURIComponent(term) + '&per_page=' + per + '&page=' + p + '&_embed=1')),
-      settled(getJSON(AM + 'series?search=' + encodeURIComponent(term) + '&per_page=' + per + '&page=' + p + '&_embed=1'))
+      settled(getJSON(AX + 'search?q=' + enc + '&per_page=' + per + '&page=' + p)),
+      settled(getJSON(AM + 'posts?search=' + enc + '&per_page=' + per + '&page=' + p + '&_embed=1')),
+      settled(getJSON(AM + 'series?search=' + enc + '&per_page=' + per + '&page=' + p + '&_embed=1')),
+      settled(zardJSON('posts?search=' + enc + '&per_page=' + per + '&page=' + p + '&_embed=1')),
+      settled(getJSON(DHS + '?q=' + enc + '&offset=' + dhOffset))
     ]);
     var items = [], hasMore = false;
-    /* both sites' results are kept, in order, without deduplication */
+    /* every site's results are kept, in order, without deduplication */
     if (res[0].status === 'fulfilled') {
       var d = res[0].value || {};
       (d.data || []).forEach(function (x) { items.push(mapAx(x)); });
@@ -285,6 +479,15 @@
     if (res[2].status === 'fulfilled') {
       (res[2].value || []).forEach(function (x) { items.push(mapAtlas(x, 'series')); });
       if (res[2].value.length >= per) hasMore = true;
+    }
+    if (res[3].status === 'fulfilled') {
+      (res[3].value || []).forEach(function (x) { items.push(mapZard(x)); });
+      if (res[3].value.length >= per) hasMore = true;
+    }
+    if (res[4].status === 'fulfilled') {
+      var hit = res[4].value || {};
+      (hit.results || []).forEach(function (x) { items.push(mapDoostiHit(x)); });
+      if (hit.has_more) hasMore = true;
     }
     if (!items.length) throw new Error('search unavailable');
     return { items: items, hasMore: hasMore };
@@ -303,19 +506,29 @@
       return Promise.resolve({ items: hit.items, hasMore: hit.hasMore });
     }
     var all = [], hasMore = false, enc = encodeURIComponent(term), T = 6000;
+    var enabled = { d1: true, d2: true, d3: true, d4: true };
+    try { Object.keys(enabled).forEach(function (k) { enabled[k] = localStorage.getItem('lm_db_' + k) !== '0'; }); } catch (_) {}
     var jobs = [
-      getJSON(AX + 'search?q=' + enc + '&per_page=' + n + '&page=' + p, T, signal).then(function (d) {
+      (enabled.d1 ? getJSON(AX + 'search?q=' + enc + '&per_page=' + n + '&page=' + p, T, signal) : Promise.resolve({})).then(function (d) {
         d = d || {};
         if (d.meta && d.meta.page < d.meta.total_pages) hasMore = true;
         return (d.data || []).map(mapAx);
       }),
-      getJSON(AM + 'posts?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal).then(function (v) {
+      (enabled.d2 ? getJSON(AM + 'posts?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal) : Promise.resolve([])).then(function (v) {
         v = v || []; if (v.length >= n) hasMore = true;
         return v.map(function (x) { return mapAtlas(x, 'movie'); });
       }),
-      getJSON(AM + 'series?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal).then(function (v) {
+      (enabled.d2 ? getJSON(AM + 'series?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal) : Promise.resolve([])).then(function (v) {
         v = v || []; if (v.length >= n) hasMore = true;
         return v.map(function (x) { return mapAtlas(x, 'series'); });
+      }),
+      (enabled.d3 ? zardJSON('posts?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal) : Promise.resolve([])).then(function (v) {
+        v = v || []; if (v.length >= n) hasMore = true;
+        return v.map(mapZard);
+      }),
+      (enabled.d4 ? getJSON(DHS + '?q=' + enc + '&offset=' + ((p - 1) * Math.min(n, 10)), T, signal) : Promise.resolve({})).then(function (d) {
+        d = d || {}; if (d.has_more) hasMore = true;
+        return (d.results || []).map(mapDoostiHit);
       })
     ];
     return Promise.all(jobs.map(function (j) {
@@ -336,42 +549,77 @@
     if (o.q) return search(o.q, page, limit);
     if (!o.genre) return sort === 'rating' ? top(page, limit) : latest(page, limit);
     if (!GROUPS) { try { await categories(); } catch (e) {} }
-    var mem = (GROUPS && GROUPS[o.genre]) || { ax: [o.genre], am: [] };
-    var axNames = mem.ax.slice(0, 6), amIds = mem.am.slice(0, 8);
+    var mem = (GROUPS && GROUPS[o.genre]) || { ax: [o.genre], am: [], zf: [], dhTag: [], dhCat: [] };
+    var axNames = (mem.ax || []).slice(0, 6), amIds = (mem.am || []).slice(0, 8);
+    var zfIds = (mem.zf || []).slice(0, 6), zfTags = (mem.zfTag || []).slice(0, 6);
+    var dhTags = (mem.dhTag || []).slice(0, 6), dhCats = (mem.dhCat || []).slice(0, 4);
     var per = Math.max(2, Math.ceil(limit / 2));
     var perAx = Math.max(4, Math.ceil(per / Math.max(1, axNames.length)));
     var sortAx = sort === 'rating' ? 'rating' : 'latest';
-    var axJobs = axNames.map(function (g) {
-      return settled(getJSON(AX + 'items?genre=' + encodeURIComponent(g) + '&per_page=' + perAx + '&page=' + page + '&sort=' + sortAx));
+    var enc = encodeURIComponent(o.genre);
+    var kinds = [], requests = [];
+    function add(kind, request) { kinds.push(kind); requests.push(request); }
+    axNames.forEach(function (g) {
+      add('ax', settled(getJSON(AX + 'items?genre=' + encodeURIComponent(g) + '&per_page=' + perAx + '&page=' + page + '&sort=' + sortAx)));
     });
-    var amJob = (async function () {
+    add('am', (async function () {
       var ids = amIds.slice();
       if (!ids.length && !(GROUPS && GROUPS[o.genre])) {
-        var c = await settled(getJSON(AM + 'categories?search=' + encodeURIComponent(o.genre) + '&per_page=10'));
+        var c = await settled(getJSON(AM + 'categories?search=' + enc + '&per_page=10'));
         if (c.status === 'fulfilled') ids = c.value.map(function (x) { return x.id; });
       }
       if (!ids.length) return null;
       return settled(getJSON(AM + 'posts?categories=' + ids.join(',') + '&per_page=' + per + '&page=' + page + '&_embed=1'));
-    })();
-    var res = await Promise.all(axJobs.concat([amJob]));
-    var posts = res.pop();
+    })());
+    add('zf', (async function () {
+      var ids = zfIds.slice();
+      if (!ids.length && !zfTags.length && !(GROUPS && GROUPS[o.genre])) {
+        var c = await settled(zardJSON('categories?search=' + enc + '&per_page=10'));
+        if (c.status === 'fulfilled') ids = c.value.map(function (x) { return x.id; });
+      }
+      if (!ids.length) return null;
+      return settled(zardJSON('posts?categories=' + ids.join(',') + '&per_page=' + per + '&page=' + page + '&_embed=1'));
+    })());
+    add('zfTag', (async function () {
+      if (!zfTags.length) return null;
+      return settled(zardJSON('posts?tags=' + zfTags.join(',') + '&per_page=' + per + '&page=' + page + '&_embed=1'));
+    })());
+    add('dhTag', (async function () {
+      var tags = dhTags.slice();
+      if (!tags.length && !(GROUPS && GROUPS[o.genre])) {
+        var c = await settled(getJSON(DH + 'tags?search=' + enc + '&per_page=10'));
+        if (c.status === 'fulfilled') tags = c.value.map(function (x) { return x.id; });
+      }
+      if (!tags.length) return null;
+      return settled(getJSON(DH + 'posts?per_page=' + per + '&page=' + page + '&tags=' + tags.join(',') + '&_embed=1'));
+    })());
+    add('dhCat', (async function () {
+      if (!dhCats.length) return null;
+      return settled(getJSON(DH + 'posts?per_page=' + per + '&page=' + page + '&categories=' + dhCats.join(',') + '&_embed=1'));
+    })());
+    var res = await Promise.all(requests);
     var items = [], seen = new Set(), hasMore = false;
-    res.forEach(function (r) {
-      if (r.status !== 'fulfilled') return;
-      var d = r.value || {};
-      (d.data || []).forEach(function (x) {
-        var m = mapAx(x);
+    res.forEach(function (r, i) {
+      if (!r || r.status !== 'fulfilled') return;
+      if (kinds[i] === 'ax') {
+        var d = r.value || {};
+        (d.data || []).forEach(function (x) {
+          var m = mapAx(x);
+          if (!seen.has(m.id)) { seen.add(m.id); items.push(m); }
+        });
+        if (d.meta && d.meta.page < d.meta.total_pages) hasMore = true;
+        return;
+      }
+      var list = r.value || [];
+      list.forEach(function (x) {
+        var m;
+        if (kinds[i] === 'am') m = mapAtlas(x, 'movie');
+        else if (/^zf/.test(kinds[i])) m = mapZard(x);
+        else { if (!isMediaTitle(x.title && x.title.rendered)) return; m = mapDoosti(x); }
         if (!seen.has(m.id)) { seen.add(m.id); items.push(m); }
       });
-      if (d.meta && d.meta.page < d.meta.total_pages) hasMore = true;
+      if (list.length >= per) hasMore = true;
     });
-    if (posts && posts.status === 'fulfilled') {
-      (posts.value || []).forEach(function (x) {
-        var m = mapAtlas(x, 'movie');
-        if (!seen.has(m.id)) { seen.add(m.id); items.push(m); }
-      });
-      if (posts.value.length >= per) hasMore = true;
-    }
     if (!items.length) throw new Error('browse unavailable');
     return { items: items, hasMore: hasMore };
   }
@@ -468,7 +716,29 @@
       } else m.links = [];
       return m;
     }
+    if (id.indexOf('zf-') === 0 || id.indexOf('dh-') === 0) {
+      var site = id.indexOf('zf-') === 0 ? 'zardfilm' : 'doostihaa';
+      return wpSourceDetail(id, site, site === 'zardfilm' ? ZF : DH);
+    }
     throw new Error('unknown id');
+  }
+  async function wpSourceDetail(id, site, base) {
+    var sid = id.slice(3);
+    var post = site === 'zardfilm' ? await zardJSON('posts/' + sid + '?_embed=1')
+      : await getJSON(base + 'posts/' + sid + '?_embed=1');
+    if (!post) throw new Error(site + ' item missing');
+    var m = site === 'zardfilm' ? mapZard(post) : mapDoosti(post);
+    try {
+      /* the two new sites keep download links outside their REST responses;
+         our own server bridge fetches and normalises them (see server.js). */
+      var r = await getJSON('/api/source-links?site=' + site + '&id=' + encodeURIComponent(sid));
+      m.links = r.links || [];
+      m.linkCount = r.linkCount != null ? r.linkCount : m.links.length;
+      m.topQ = r.topQ || '';
+      if (r.siteRating) { m.siteRating = r.siteRating; m.imdb = r.siteRating; m.ratingLabel = 'IMDb'; }
+      if (r.year) m.year = r.year;
+    } catch (e) { m.links = []; }
+    return m;
   }
   async function byIds(ids) {
     var out = [];

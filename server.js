@@ -20,6 +20,7 @@ const USERS_FILE = path.join(STORAGE, 'users.json');
 const SESSIONS_FILE = path.join(STORAGE, 'sessions.json');
 const CACHE_FILE = path.join(STORAGE, 'enrich-cache.json');
 const HOME_FEED_FILE = path.join(STORAGE, 'home-feed.json');
+const FEATURED_FILE = path.join(STORAGE, 'featured.json');
 const CONFIG_FILE = path.join(ROOT, 'config.json');
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -362,17 +363,24 @@ const SEARCH_INDEX = MOVIES.map(m => ({
 }));
 console.log(`  ${MOVIES.length} titles, ${(catalog.genres || []).length} genres`);
 
-const FEATURED_POOL = MOVIES.filter(m => m.type === 'movie');
+const FEATURED_POOL = MOVIES.filter(m => m.type === 'movie' && (m.links || []).some(l => !l.sub));
 function featured() {
   const pool = FEATURED_POOL.length ? FEATURED_POOL : MOVIES;
-  const day = Math.floor((Date.now() + TZ_OFFSET) / DAY);
-  const h = crypto.createHash('sha256').update(String(day) + '|lookmv-featured').digest();
-  const idx = h.readUInt32BE(0) % pool.length;
-  const movie = pool[idx];
+  const hour = Math.floor(Date.now() / 3600000);
+  let saved = readJSON(FEATURED_FILE, null);
+  if (!saved || saved.hour !== hour || !BY_ID.has(saved.id)) {
+    const h = crypto.createHash('sha256').update(String(hour) + '|lookmv-featured').digest();
+    let idx = h.readUInt32BE(0) % pool.length;
+    if (saved && pool.length > 1 && pool[idx].id === saved.id) idx = (idx + 1) % pool.length; // never repeat the previous hour's pick
+    const movie = pool[idx];
+    saved = { hour, id: movie.id, changedAt: new Date(hour * 3600000).toISOString() };
+    const tmp = FEATURED_FILE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(saved)); fs.renameSync(tmp, FEATURED_FILE);
+  }
+  const movie = BY_ID.get(saved.id) || pool[0];
   return {
     movie: summary(movie),
-    day,
-    nextChangeInHours: Math.ceil((DAY - ((Date.now() + TZ_OFFSET) % DAY)) / 3600000),
+    changedAt: saved.changedAt,
+    nextChangeInSeconds: Math.ceil((3600000 - (Date.now() % 3600000)) / 1000),
   };
 }
 function summary(m) {
@@ -421,11 +429,242 @@ function queryMovies(p) {
   };
 }
 
+/* ------------------- two extra source sites (link bridge) ------------------- */
+/* zardfilm.in renders its download box only in the HTML page (the wp/v2 REST
+ * response has no links), and that HTML is not served with CORS headers. This
+ * bridge fetches it server-side and returns a normalised link list to the
+ * browser. doostihaa.com is reachable directly, but it goes through here too so
+ * both new sources share one parser and one cache. */
+const SOURCE_ORIGINS = {
+  zardfilm: 'https://zardfilm.in',
+  doostihaa: 'https://www.doostihaa.com',
+};
+const SOURCE_TTL = 12 * 3600000;
+const SOURCE_MAX = 400;
+const sourceLinkCache = new Map();
+
+function srcText(html) {
+  return String(html || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#0*38;|&amp;/gi, '&').replace(/&#0*39;|&#x27;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&nbsp;|&#160;/gi, ' ').replace(/[\u200c\u200d]/g, '')
+    .replace(/\s+/g, ' ').trim();
+}
+function srcDigits(s) {
+  return String(s || '').replace(/[\u06f0-\u06f9]/g, c => String(c.charCodeAt(0) - 0x06f0));
+}
+function srcQuality(v) {
+  const s = String(v || '');
+  if (/(2160|4k|uhd)/i.test(s)) return '4K';
+  const m = s.match(/(480|540|576|720|1080)/);
+  if (m) return m[1] + 'p';
+  return /\d/.test(s) ? s.trim() : '';
+}
+function srcYear(v) { return (srcDigits(v).match(/(19|20)\d{2}/) || [])[0] || ''; }
+function srcRating(v) {
+  const s = srcDigits(v);
+  const m = s.match(/(?:امتیاز(?:\s*فیلم)?|IMDb| rating)[^\d]{0,18}(\d{1,2}(?:[.,]\d{1,2})?)/i)
+    || s.match(/(?:امتیاز|IMDb)[^\d]{0,18}(\d{1,2}(?:[.,]\d{1,2})?)\s*از\s*10/i);
+  if (!m) return '';
+  const n = parseFloat(m[1].replace(',', '.'));
+  return Number.isFinite(n) && n > 0 && n <= 10 ? String(n) : '';
+}
+function validSrcLink(u) {
+  if (!/^https?:\/\//i.test(u)) return false;
+  if (/(^|\/)(stream|play|embed)(\/|\?|$)/i.test(u)) return false;
+  return true;
+}
+function pushLink(out, seen, link) {
+  if (!link || !validSrcLink(link.url) || seen.has(link.url)) return;
+  seen.add(link.url);
+  link.q = srcQuality(link.q);
+  out.push(link);
+}
+
+/* zardfilm's version-3 download box:
+ *   .zdl-box (version) -> .zdl-season[data-zdl-season] / .zdl-ep rows (series)
+ *   .zdl-box (version) -> .zdl-row rows (movies) */
+function parseZardLinks(html) {
+  const out = [], seen = new Set();
+  String(html || '').split(/<section class="zdl-box\b[^>]*>/i).slice(1).forEach(chunk => {
+    const hm = chunk.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
+    const note = chunk.match(/<div class="zdl-note"[^>]*>[\s\S]*?<span>([\s\S]*?)<\/span>/i);
+    const label = [hm && srcText(hm[1]), note && srcText(note[1])].filter(Boolean).join(' · ');
+    const seasons = [];
+    let sm;
+    const sr = /data-zdl-season="(\d+)"/gi;
+    while ((sm = sr.exec(chunk))) seasons.push({ at: sm.index, n: +sm[1] });
+
+    const er = /<div class="zdl-ep\b[^>]*>([\s\S]*?)(?=<div class="zdl-ep\b|<\/section>|$)/gi;
+    let em;
+    while ((em = er.exec(chunk))) {
+      const block = em[1];
+      let season = 1;
+      for (const s of seasons) { if (s.at < em.index) season = s.n; else break; }
+      const en = block.match(/class="zdl-en"[^>]*>([\s\S]*?)<\/span>/i);
+      let ep = en ? parseInt(srcDigits(srcText(en[1])).match(/\d+/) || '0', 10) : 0;
+      for (const tag of block.matchAll(/<a\b([^>]*)>/gi)) {
+        const a = tag[1];
+        if (!/class="[^"]*\bzdl-qs\b/.test(a)) continue;
+        const href = (a.match(/href="([^"]+)"/i) || [])[1];
+        if (!href) continue;
+        let epUrl = href.match(/S(\d{1,2})[ ._-]?E(\d{1,4})/i);
+        if (epUrl) { season = +epUrl[1]; ep = +epUrl[2]; }
+        if (!ep) ep = parseInt((href.match(/[?&]episode=(\d+)/i) || [])[1] || '0', 10);
+        const q = (a.match(/data-zdl-q="([^"]*)"/i) || [])[1]
+          || (href.match(/(480|540|576|720|1080|2160)/) || [])[1] || '';
+        pushLink(out, seen, {
+          q: q, label: label, name: '', group: label, ep: ep || null, season: season || null,
+          size: '', url: href.replace(/&#0*38;/g, '&').replace(/&amp;/g, '&'),
+          sub: /\.(srt|ssa|ass|vtt)(\?|$)/i.test(href) || undefined,
+        });
+      }
+    }
+
+    const rr = /<div class="zdl-row\b[^>]*>([\s\S]*?)(?=<div class="zdl-row\b|<\/section>|$)/gi;
+    let rm;
+    while ((rm = rr.exec(chunk))) {
+      const block = rm[1];
+      const q = (block.match(/<bdi[^>]*>([^<]+)<\/bdi>/i) || [])[1] || '';
+      const sz = block.match(/class="zdl-sz"[^>]*>([\s\S]*?)<\/div>/i);
+      let url = '';
+      for (const tag of block.matchAll(/<a\b([^>]*)>/gi)) {
+        const a = tag[1];
+        if (!/\bdata-zdl-dl\b|\bzdl-btn\b/.test(a)) continue;
+        url = (a.match(/href="([^"]+)"/i) || [])[1] || '';
+        if (url) break;
+      }
+      if (!url) url = (block.match(/data-zdl-copy="([^"]+)"/i) || [])[1] || '';
+      if (!url) continue;
+      pushLink(out, seen, {
+        q: q, label: label, name: '', group: label, ep: null, season: null,
+        size: sz ? srcText(sz[1]) : '',
+        url: url.replace(/&#0*38;/g, '&').replace(/&amp;/g, '&'),
+      });
+    }
+  });
+  return out;
+}
+
+/* doostihaa stores direct download URLs as plain <a href> elements in the post
+ * content. The surrounding text gives the version; the URL gives quality and
+ * episode (S01E01) for series. */
+function parseDoostiLinks(html) {
+  const out = [], seen = new Set();
+  let group = '';
+  const tokens = String(html || '').match(/<\/?(?:p|h[1-6]|div|li|br|tr|table)\b[^>]*>|[^<]+|<[^>]+>/gi) || [];
+  for (const tok of tokens) {
+    if (/^<a\b/i.test(tok)) {
+      const href = (tok.match(/href="([^"]+)"/i) || [])[1];
+      if (!href || !/\.(mp4|mkv|avi|webm|mov|m4v|srt|ssa|ass|vtt)(\?|$)/i.test(href)) continue;
+      let q = srcQuality((href.match(/(?:^|[./_-])(480|540|576|720|1080|2160)p?/i) || [])[1] || '');
+      if (!q) q = srcQuality(tok);
+      const epM = href.match(/S(\d{1,2})[ ._-]?E(\d{1,4})/i);
+      pushLink(out, seen, {
+        q: q, label: group, name: '', group: group,
+        ep: epM ? +epM[2] : null, season: epM ? +epM[1] : null,
+        size: '', url: href.replace(/&#0*38;/g, '&').replace(/&amp;/g, '&'),
+        sub: /\.(srt|ssa|ass|vtt)(\?|$)/i.test(href) || undefined,
+      });
+      continue;
+    }
+    if (/^<\//.test(tok) || /^<[^a/]/.test(tok)) continue;
+    const text = srcText(tok);
+    if (!text) continue;
+    if (/[()（]/.test(text) && /(نسخه|دوبله|زیرنویس|سانسور|کیفیت|sub|dub)/i.test(text)) group = text.replace(/^[(\s]+|[)\s]+$/g, '');
+    else if (/(نسخه|دوبله فارسی|زیرنویس چسبیده|سانسور نشده)/.test(text) && text.length < 90) group = text;
+  }
+  return out;
+}
+
+async function sourcePage(url, timeout) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeout || 10000);
+  try {
+    const r = await fetch(url, {
+      signal: ctl.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; lookmv/1.0)', 'Accept-Language': 'fa,en;q=0.8' },
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.text();
+  } finally { clearTimeout(t); }
+}
+async function sourceLinks(site, id) {
+  const key = site + ':' + id;
+  const hit = sourceLinkCache.get(key);
+  if (hit && Date.now() - hit.at < SOURCE_TTL) return hit.data;
+  const origin = SOURCE_ORIGINS[site];
+  if (!origin || !/^\d+$/.test(String(id))) throw new Error('bad source');
+  const api = origin + '/wp-json/wp/v2/posts/' + id + '?_fields=link,title,excerpt,content,categories';
+  const post = JSON.parse(await sourcePage(api, 9000));
+  if (!post || !post.link) throw new Error('post missing');
+  const link = new URL(post.link);
+  if (link.origin !== origin) throw new Error('bad origin');
+  const html = site === 'zardfilm'
+    ? await sourcePage(link.href, 14000)
+    : (post.content && post.content.rendered) || '';
+  const links = site === 'zardfilm' ? parseZardLinks(html) : parseDoostiLinks(html);
+  const title = srcText(post.title && post.title.rendered);
+  const excerpt = srcText(post.excerpt && post.excerpt.rendered);
+  const content = srcText(post.content && post.content.rendered);
+  const data = {
+    links: links,
+    linkCount: links.length,
+    topQ: [...new Set(links.map(l => l.q).filter(Boolean))]
+      .sort((a, b) => ['4K', '1080p', '720p', '480p'].indexOf(a) - ['4K', '1080p', '720p', '480p'].indexOf(b))[0] || '',
+    siteRating: srcRating((excerpt + ' ' + content).slice(0, 900)),
+    year: srcYear(title) || srcYear(excerpt),
+  };
+  sourceLinkCache.set(key, { at: Date.now(), data: data });
+  if (sourceLinkCache.size > SOURCE_MAX) {
+    const old = [...sourceLinkCache.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, sourceLinkCache.size - SOURCE_MAX);
+    for (const [k] of old) sourceLinkCache.delete(k);
+  }
+  return data;
+}
+
 
 /* ------------------------- daily home feed ------------------------- */
 const localDay = () => new Date(Date.now() + TZ_OFFSET).toISOString().slice(0, 10);
 let homeFeed = readJSON(HOME_FEED_FILE, { day: '', top: [], latest: [], source: 'local' });
 let homeFeedJob = null;
+/* Daily category rows: every Tehran day the server picks a few random real catalog genres
+ * and ~12 random titles for each. Yesterday's genres/titles are excluded so rows are replaced day by day. */
+const DAILY_ROW_COUNT = 5, DAILY_ROW_ITEMS = 12;
+const GENRE_EXCLUDE = new Set(['سریال', 'فیلم', 'متفرقه', 'نامشخص', 'adult', 'science-fiction', 'sports', 'diy']);
+const GENRE_INDEX = new Map(); // genre -> [movie ids that have links]
+for (const m of MOVIES) {
+  if (!(m.links || []).some(l => !l.sub)) continue;
+  for (const g of new Set([m.genre, ...(m.genres || [])].filter(Boolean))) {
+    if (GENRE_EXCLUDE.has(g)) continue;
+    if (!GENRE_INDEX.has(g)) GENRE_INDEX.set(g, []);
+    GENRE_INDEX.get(g).push(m.id);
+  }
+}
+const DAILY_HOME_CATEGORIES = [...GENRE_INDEX.entries()].filter(([, ids]) => ids.length >= 60).map(([g]) => g);
+function seededRng(seed) {
+  let a = crypto.createHash('sha256').update(seed).digest().readUInt32BE(0);
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function seededShuffle(list, seed) {
+  const rnd = seededRng(seed), a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+function buildDailyRows(day, prev) {
+  const prevGenres = new Set(prev?.genres || []), prevIds = new Set(prev?.ids || []);
+  let genres = seededShuffle(DAILY_HOME_CATEGORIES, day + '|lookmv-home-genres');
+  const fresh = genres.filter(g => !prevGenres.has(g));
+  genres = [...fresh, ...genres.filter(g => prevGenres.has(g))].slice(0, DAILY_ROW_COUNT);
+  const used = new Set();
+  return genres.map(g => {
+    const all = seededShuffle(GENRE_INDEX.get(g), day + '|lookmv-home-items|' + g).filter(id => !used.has(id));
+    const ids = [...all.filter(id => !prevIds.has(id)), ...all.filter(id => prevIds.has(id))].slice(0, DAILY_ROW_ITEMS);
+    ids.forEach(id => used.add(id));
+    return { genre: g, ids };
+  });
+}
 const normTitle = value => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const TITLE_LOOKUP = new Map();
@@ -476,7 +715,7 @@ function saveHomeFeed() {
 }
 async function refreshHomeFeed() {
   const day = localDay();
-  if (homeFeed.day === day && homeFeed.top?.length >= 10 && homeFeed.latest?.length >= 10) return homeFeed;
+  if (homeFeed.day === day && homeFeed.top?.length >= 10 && homeFeed.latest?.length >= 10 && Array.isArray(homeFeed.rows) && homeFeed.rows.length) return homeFeed;
   if (homeFeedJob) return homeFeedJob;
   homeFeedJob = (async () => {
     let remoteTop = [], remoteLatest = [], usedTMDb = false;
@@ -497,7 +736,10 @@ async function refreshHomeFeed() {
     const latestFallback = localLatestIds();
     const top = uniqueIds([...remoteTop, ...topFallback]).slice(0, 50);
     const latest = uniqueIds([...remoteLatest, ...latestFallback]).slice(0, 50);
-    homeFeed = { day, refreshedAt: new Date().toISOString(), source: usedTMDb ? 'tmdb+catalog' : 'catalog', top, latest };
+    const prevRows = homeFeed.rows || [];
+    const prev = { genres: prevRows.map(r => r.genre), ids: prevRows.flatMap(r => r.ids || []) };
+    const rows = buildDailyRows(day, prev);
+    homeFeed = { day, refreshedAt: new Date().toISOString(), source: usedTMDb ? 'tmdb+catalog' : 'catalog', top, latest, genres: rows.map(r => r.genre), rows };
     saveHomeFeed();
     return homeFeed;
   })().finally(() => { homeFeedJob = null; });
@@ -512,6 +754,8 @@ async function dailyHomeFeed() {
   return {
     day: feed.day || localDay(), source: feed.source || 'catalog',
     top: top.map(summary), latest: latest.map(summary),
+    genres: feed.genres || [],
+    rows: (feed.rows || []).map(r => ({ genre: r.genre, items: (r.ids || []).map(id => BY_ID.get(id)).filter(Boolean).map(summary) })).filter(r => r.items.length),
   };
 }
 function recommendations(ids, limit = 10) {
@@ -884,21 +1128,89 @@ const within = (ms, p) => Promise.race([p, new Promise(ok => setTimeout(() => ok
 const publicInfo = d => d ? { ...d, poster: imgUrl(d.poster), backdrop: imgUrl(d.backdrop) } : d;
 const pickCover = d => d ? { poster: imgUrl(d.poster), backdrop: imgUrl(d.backdrop), imdb: d.imdb || d.vote || '', year: d.year || '' } : null;
 
-/* featured movie: summary + rating + year + background image resolved on the server in one response */
-async function featuredFull() {
-  const f = featured();
-  const m = BY_ID.get(f.movie.id);
-  f.info = null; f.image = '';
-  if (!m) return f;
-  const info = await within(6000, enrich(m.titleEn || m.title, m.year || '', m.type || 'movie').catch(() => null));
-  if (!info) return f;
-  f.info = publicInfo(info);
-  const raw = info.backdrop || info.poster;
-  if (raw) {
-    const url = imgUrl(raw === info.poster ? bigImg(raw) : raw, [raw]);
-    const id = url.slice(5);
-    if (await within(5000, getImage(id))) f.image = url;   // only send it once it is really on our disk
+/* Resolve art from a trusted Atlasmind catalog entry when metadata APIs miss it.
+   This is used only for the hourly featured title and its result is persisted. */
+async function featuredSourceArtwork(m) {
+  if (m.source === 'animex') {
+    const id = String(m.id || '').match(/^ax-\d+-(\d+)$/)?.[1];
+    if (!id) return null;
+    try {
+      const result = JSON.parse(await sourcePage('https://animex.pro/wp-json/app/v1/items/' + id, 8000));
+      const item = result && (result.data || result);
+      const poster = item && (item.poster || item.image || '');
+      const backdrop = item && (item.backdrop || poster);
+      return poster || backdrop ? { poster, backdrop } : null;
+    } catch { return null; }
   }
+  if (m.source !== 'atlasmind' || !m.sourceUrl) return null;
+  let source;
+  try { source = new URL(m.sourceUrl); } catch { return null; }
+  if (!['www.atlasmind.top', 'atlasmind.top', 'www.atlasmind.net', 'atlasmind.net'].includes(source.hostname)) return null;
+  const id = (source.pathname.match(/^\/(\d+)(?:\/|$)/) || [])[1];
+  if (!id) return null;
+  try {
+    const apiUrl = source.origin + '/wp-json/wp/v2/posts/' + id + '?_embed=1';
+    const post = JSON.parse(await sourcePage(apiUrl, 8000));
+    const media = (post._embedded && post._embedded['wp:featuredmedia'] || [])[0] || {};
+    const sizes = media.media_details && media.media_details.sizes || {};
+    const poster = media.source_url || sizes.full?.source_url || sizes.large?.source_url || sizes.medium?.source_url || '';
+    return poster ? { poster, backdrop: poster } : null;
+  } catch { return null; }
+}
+
+/* featured movie: summary + rating + year + cached cover resolved on the server */
+async function featuredFull() {
+  const f0 = featured();
+  const fullFile = path.join(STORAGE, 'featured-details.json');
+  const cached = readJSON(fullFile, null);
+  const hour = Math.floor(Date.now() / 3600000);
+  const samePick = cached && cached.hour === hour && cached.id === f0.movie.id && cached.value;
+  if (samePick && cached.value.image) {
+    const savedSources = Array.isArray(cached.imageSources) ? cached.imageSources : [];
+    if (savedSources.length) {
+      const registered = imgUrl(savedSources[0], savedSources.slice(1));
+      if (registered) cached.value.image = registered;
+    }
+    return cached.value;
+  }
+
+  const f = samePick ? { ...cached.value } : { ...f0 };
+  const m = BY_ID.get(f.movie.id);
+  f.info = null;
+  f.image = '';
+  if (!m) return f;
+  f.links = (m.links || []).filter(l => !l.sub).map(l => ({ name: l.name || l.fileName || '', url: l.url, q: l.q || '', label: l.label || '' }));
+
+  let info = await within(6000, enrich(m.titleEn || m.title, m.year || '', m.type || 'movie').catch(() => null));
+  info = info || { ...EMPTY };
+  if (!info.backdrop && !info.poster) {
+    const art = await featuredSourceArtwork(m);
+    if (art) info = { ...info, ...art };
+  }
+  f.info = publicInfo(info);
+
+  const candidates = [...new Set([info.backdrop, info.poster].filter(Boolean))];
+  const previousSources = samePick && Array.isArray(cached.imageSources) ? cached.imageSources : [];
+  const rawSources = [...new Set([...candidates, ...previousSources])];
+  if (rawSources.length) {
+    const primary = bigImg(rawSources[0]);
+    const sources = [...new Set([primary, ...rawSources])];
+    const proxy = imgUrl(primary, sources.slice(1));
+    if (proxy) {
+      f.image = proxy;
+      // Persist the source URLs with the hourly pick; the authenticated /img request
+      // downloads and keeps the image on the server without delaying page rendering.
+      getImage(proxy.slice(5)).catch(() => {});
+    }
+    const tmp = fullFile + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({ hour, id: f.movie.id, imageSources: sources, value: f }));
+    fs.renameSync(tmp, fullFile);
+    return f;
+  }
+
+  const tmp = fullFile + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify({ hour, id: f.movie.id, imageSources: [], value: f }));
+  fs.renameSync(tmp, fullFile);
   return f;
 }
 
@@ -997,10 +1309,10 @@ async function api(req, res, u) {
       let got = null;
       if (head.status === 200) {
         if (head.len && head.len > SUB_MAX) continue;
-        got = await fetchSub(candidate, 'GET', 12000);
+        got = await fetchSub(candidate, 'GET', 4500);
       } else if (head.status === 403 || head.status === 405 || head.status === 501) {
         /* some CDNs refuse HEAD but serve GET */
-        got = await fetchSub(candidate, 'GET', 12000);
+        got = await fetchSub(candidate, 'GET', 4500);
       } else continue;
       if (!got || got.status !== 200 || !got.buf || !got.buf.length || got.buf.length > SUB_MAX) continue;
       const vtt = toVtt(decodeSubtitle(got.buf), candidate);
@@ -1059,6 +1371,34 @@ async function api(req, res, u) {
     duplicatesRemoved: catalog.duplicatesRemoved || 0,
   });
   if (p === '/api/movies') return json(res, 200, queryMovies(u.searchParams));
+  /* zardfilm blocks normal browser user-agents on its REST API, so the browser
+   * asks us to fetch the public wp/v2 path with a neutral user-agent. */
+  if (p === '/api/zard' && method === 'GET') {
+    const sub = String(u.searchParams.get('path') || '');
+    if (!/^(posts|categories|tags)(?:\/|\?|$)/.test(sub) || /\.\.|:[^/]\/\/|\\\//.test(sub)) {
+      return json(res, 400, { error: 'invalid_path' });
+    }
+    const url = SOURCE_ORIGINS.zardfilm + '/wp-json/wp/v2/' + sub;
+    const hit = sourceLinkCache.get('api:' + url);
+    if (hit && Date.now() - hit.at < 180000) {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, max-age=60' });
+      return res.end(hit.data);
+    }
+    try {
+      const text = await sourcePage(url, 12000);
+      sourceLinkCache.set('api:' + url, { at: Date.now(), data: text });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, max-age=60' });
+      return res.end(text);
+    } catch (e) { return json(res, 502, { error: 'source_unavailable' }); }
+  }
+  /* Normalised download links for the two extra sources (zardfilm / doostihaa). */
+  if (p === '/api/source-links' && method === 'GET') {
+    const site = String(u.searchParams.get('site') || '');
+    const id = String(u.searchParams.get('id') || '').replace(/\D/g, '');
+    if (!SOURCE_ORIGINS[site] || !id) return json(res, 400, { error: 'invalid_source' });
+    try { return json(res, 200, await sourceLinks(site, id)); }
+    catch (e) { console.error('[source-links]', site, id, e.message); return json(res, 502, { error: 'source_unavailable' }); }
+  }
   if (p === '/api/home-feed' && method === 'GET') return json(res, 200, await dailyHomeFeed());
   if (p === '/api/recommendations' && method === 'GET') {
     const ids = String(u.searchParams.get('ids') || '').split(',').filter(Boolean).slice(0, 200);
@@ -1083,7 +1423,7 @@ async function api(req, res, u) {
   }
   /* metadata is fetched in the visitor's browser from the source sites; this
      endpoint only returns the daily catalog pick (no external API calls). */
-  if (p === '/api/featured') return json(res, 200, featured());
+  if (p === '/api/featured') return json(res, 200, await featuredFull());
   if (p === '/api/trailer') {
     const title = String(u.searchParams.get('q') || '').trim().slice(0, 160);
     if (!title) return json(res, 400, { error: 'missing q' });
@@ -1111,7 +1451,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(img.buf);
     }
     if (u.pathname.startsWith('/api/')) return await api(req, res, u);
-    const name = u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname.slice(1));
+    const name = (u.pathname === '/' || u.pathname === '/login' || u.pathname === '/register') ? 'index.html' : decodeURIComponent(u.pathname.slice(1));
     return file(res, name);
   } catch (e) {
     console.error('[error]', e);

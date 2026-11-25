@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /*
- * Builds a single, deduplicated movie catalog from the two source databases.
+ * Builds a single, deduplicated movie catalog from the source databases.
+ * The original two files are required; zardfilm_database.json and
+ * doostihaa_database.json are optional (drop them next to the others and they
+ * are merged in automatically).
  * Run: node scripts/build-movies.js
  */
 const fs = require('fs');
@@ -9,6 +12,8 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const ATLAS = path.join(ROOT, '..', 'atlasmind_all.json');
 const ANIMEX = path.join(ROOT, '..', 'animex_database.json');
+const ZARD = path.join(ROOT, '..', 'zardfilm_database.json');
+const DOOSTI = path.join(ROOT, '..', 'doostihaa_database.json');
 const OUT = path.join(ROOT, 'data', 'movies.json');
 
 const norm = s => String(s || '')
@@ -114,6 +119,39 @@ function fromAnimex(t, ci, ti) {
   };
 }
 
+/* The two extra sites export the same normalised shape used by
+ * source-catalog.js, so their dump files can be dropped in without a rewrite. */
+function fromWpSource(it, prefix, source) {
+  const links = (it.links || []).map(l => ({
+    q: l.q || quality(l.quality || ''),
+    label: l.label || '',
+    ep: l.ep == null ? null : Number(l.ep),
+    season: l.season == null ? null : Number(l.season),
+    size: l.size || '',
+    url: l.url,
+    sub: l.sub || undefined,
+  })).filter(l => l.url);
+  const genres = Array.isArray(it.genres) ? it.genres.filter(Boolean) : [];
+  const rating = String(it.siteRating || it.imdb || '');
+  return {
+    id: prefix + '-' + it.id,
+    title: it.title || it.titleEn || '',
+    titleEn: it.titleEn || '',
+    year: String(it.year || '').match(/(19|20)\d{2}/)?.[0] || '',
+    type: it.type || 'movie',
+    source: source,
+    sourceUrl: it.sourceUrl || '',
+    genres,
+    genre: genres[0] || '',
+    country: it.country || '',
+    language: it.language || '',
+    siteRating: rating,
+    releaseDate: it.releaseDate || '',
+    added: it.added || '',
+    links,
+  };
+}
+
 // richer record wins when the same title exists in both databases
 function richness(m) {
   return (m.links.length > 0 ? 2 : 0)
@@ -124,10 +162,27 @@ function richness(m) {
     + Math.min(m.links.length / 50, 4);
 }
 
+function readOptional(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (e) { if (e.code !== 'ENOENT') console.error('[build] skip', file, e.message); return null; }
+}
+function entries(obj) {
+  if (!obj) return [];
+  if (Array.isArray(obj)) return obj;
+  if (Array.isArray(obj.items)) return obj.items;
+  if (Array.isArray(obj.categories)) return obj.categories.flatMap(c => c.titles || []);
+  return [];
+}
+
 function main() {
   console.log('Reading source databases...');
   const atlas = JSON.parse(fs.readFileSync(ATLAS, 'utf8'));
   const animex = JSON.parse(fs.readFileSync(ANIMEX, 'utf8'));
+  const zard = readOptional(ZARD);
+  const doosti = readOptional(DOOSTI);
+  const usedSources = ['atlasmind_all.json', 'animex_database.json'];
+  if (zard) usedSources.push('zardfilm_database.json');
+  if (doosti) usedSources.push('doostihaa_database.json');
 
   const map = new Map();
   let dupes = 0;
@@ -147,6 +202,8 @@ function main() {
 
   atlas.items.forEach((it, i) => add(fromAtlas(it, i)));
   animex.categories.forEach((c, ci) => c.titles.forEach((t, ti) => add(fromAnimex(t, ci, ti))));
+  entries(zard).forEach(it => add(fromWpSource(it, 'zf', 'zardfilm')));
+  entries(doosti).forEach(it => add(fromWpSource(it, 'dh', 'doostihaa')));
 
   const isSub = l => /\.(srt|ssa|ass|vtt)(\?|$)/i.test(String(l.url || '').split('#')[0]);
   const movies = [...map.values()].map(m => {
@@ -166,7 +223,7 @@ function main() {
   const genres = [...new Set(movies.flatMap(m => m.genres))].filter(Boolean).sort((a, b) => a.localeCompare(b, 'fa'));
   const out = {
     generatedAt: new Date().toISOString(),
-    sources: ['atlasmind_all.json', 'animex_database.json'],
+    sources: usedSources,
     total: movies.length,
     duplicatesRemoved: dupes,
     genres,
