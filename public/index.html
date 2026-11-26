@@ -729,6 +729,7 @@ html.boot body{visibility:hidden}
 
 <script src="/source-meta.js"></script>
 <script src="/source-catalog.js"></script>
+<script src="/sfx.js"></script>
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const REDUCED=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -754,7 +755,7 @@ if(window.SourceCatalog)window.SourceCatalog.local={
 };
 let toastT;
 const toast=(msg,err=false)=>{
-  const t=$('#toast');if(lang==='en'&&/^دانلود شروع شد/.test(msg))msg='Download started'+msg.slice(14);t.textContent=msg;t.classList.toggle('err',err);t.classList.add('on');
+  const t=$('#toast');if(lang==='en'&&/^دانلود شروع شد/.test(msg))msg='Download started'+msg.slice(14);t.textContent=msg;t.classList.toggle('err',err);t.classList.add('on');window.sfx&&sfx.play(err?'error':'notify');
   clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),3200)};
 
 let me=null,catalog={total:0,genres:[]},featuredMovie=null;
@@ -1781,12 +1782,12 @@ function showAuth(){
 }
 async function submitAuth(){
   const email=$('#authEmail').value.trim(),password=$('#authPass').value;
-  if(!email||!password){$('#authErr').textContent='ایمیل و رمز را وارد کنید';return}
+  if(!email||!password){$('#authErr').textContent='ایمیل و رمز را وارد کنید';window.sfx&&sfx.play('warn');return}
   const btn=$('#authSubmit');btn.disabled=true;btn.textContent='لطفاً صبر کنید…';$('#authErr').textContent='';
   try{
     const d=await post(authMode==='login'?'/api/login':'/api/signup',{email,password});
-    me=d.user;$('#auth').hidden=true;history.replaceState(null,'','/');startApp();
-  }catch(e){$('#authErr').textContent=errMsg(e)}
+    me=d.user;$('#auth').hidden=true;history.replaceState(null,'','/');startApp();window.sfx&&sfx.play(authMode==='login'?'login':'signup');
+  }catch(e){$('#authErr').textContent=errMsg(e);window.sfx&&sfx.play('error');const c=$('.acard');c&&!REDUCED()&&c.animate([{transform:'translateX(0)'},{transform:'translateX(-9px)'},{transform:'translateX(8px)'},{transform:'translateX(-5px)'},{transform:'translateX(0)'}],{duration:380,easing:'ease-out'})}
   btn.disabled=false;btn.textContent=authMode==='login'?'ورود به سایت':'ثبت نام و ورود';
 }
 $('#authSubmit').onclick=submitAuth;
@@ -1806,7 +1807,7 @@ $('#changeEmailBtn').onclick=async()=>{
   const email=$('#newEmail').value.trim(),password=$('#emailPass').value;
   if(!email||!password){toast('ایمیل و رمز فعلی را وارد کنید',true);return}
   try{const d=await post('/api/change-email',{email,password});me=d.user;$('#meEmail').textContent=me.email;
-    $('#newEmail').value='';$('#emailPass').value='';toast('ایمیل با موفقیت تغییر کرد');}
+    $('#newEmail').value='';$('#emailPass').value='';window.sfx&&sfx.play('success');toast('ایمیل با موفقیت تغییر کرد');}
   catch(e){toast(errMsg(e),true)}
 };
 $('#changePassBtn').onclick=async()=>{
@@ -1814,18 +1815,18 @@ $('#changePassBtn').onclick=async()=>{
   if(newPassword!==$('#newPass2').value){toast('تکرار رمز مطابقت ندارد',true);return}
   if(!currentPassword||!newPassword){toast('تمام فیلدها را پر کنید',true);return}
   try{await post('/api/change-password',{currentPassword,newPassword});
-    $('#curPass').value='';$('#newPass').value='';$('#newPass2').value='';showAuth();toast('رمز تغییر کرد؛ دوباره وارد شوید');}
+    $('#curPass').value='';$('#newPass').value='';$('#newPass2').value='';showAuth();window.sfx&&sfx.play('success');toast('رمز تغییر کرد؛ دوباره وارد شوید');}
   catch(e){toast(errMsg(e),true)}
 };
 $('#logoutBtn').onclick=async()=>{
   try{await post('/api/logout')}catch(_){}
-  showAuth();toast('از حساب خارج شدید');
+  showAuth();window.sfx&&sfx.play('logout');toast('از حساب خارج شدید');
 };
 $('#deleteBtn').onclick=async()=>{
   const password=$('#delPass').value;
   if(!password){toast('برای تأیید رمز خود را وارد کنید',true);return}
   if(!confirm(T('حذف حساب غیرقابل بازگشت است. آیا تأیید می کنید؟',lang)))return;
-  try{await post('/api/delete-account',{password});showAuth();toast('حساب حذف شد');}
+  try{await post('/api/delete-account',{password});showAuth();window.sfx&&sfx.play('danger');toast('حساب حذف شد');}
   catch(e){toast(errMsg(e),true)}
 };
 (async()=>{
