@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fa" dir="rtl" data-theme="dark">
+<html lang="fa" dir="rtl" data-theme="dark" class="boot">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
@@ -400,6 +400,7 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 /* ---------- auth screen ---------- */
 #auth{position:fixed;inset:0;z-index:400;display:grid;place-items:center;padding:20px;overflow:auto;background:radial-gradient(circle at 20% 10%,color-mix(in srgb,var(--tl) 16%,transparent),transparent 45%),radial-gradient(circle at 85% 85%,color-mix(in srgb,var(--pu) 14%,transparent),transparent 42%),var(--bg)}
 #auth[hidden]{display:none}
+html.boot body{visibility:hidden}
 .acard{width:min(440px,100%);padding:30px 26px;border-radius:28px;background:color-mix(in srgb,var(--pn) 88%,transparent);border:1px solid var(--ln);box-shadow:0 30px 90px var(--sh);display:grid;gap:18px;animation:fadeUp .8s var(--spring)}
 .acard .logo{font-size:1.3em;margin-inline:auto}
 .achead{text-align:center;display:grid;gap:6px}.achead h1{font-size:24px}.achead p{color:var(--mt);font-size:14px;line-height:1.8}
@@ -710,7 +711,7 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
   <p class="mdn">حقوق فیلم‌ها و سریال‌ها متعلق به صاحبان اثر است. برای درخواست حذف محتوا از بخش «تماس با ما» اقدام کنید.</p>
 </div></div>
 
-<div id="auth">
+<div id="auth" hidden>
   <div class="acard">
     <div class="logo" dir="ltr"><span class="lt">lookmv</span><svg class="bolt" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><g fill="none" stroke-linejoin="miter" vector-effect="non-scaling-stroke"><path class="gap" d="M57 -2L50 9L60 15L48 26L58 31L50 42M60 15L68 20L65 28"/><path class="core" d="M57 -2L50 9L60 15L48 26L58 31L50 42M60 15L68 20L65 28"/></g></svg></div>
     <div class="achead"><h1 id="authTitle">خوش آمدید</h1><p id="authSub">برای دسترسی به فیلم ها وارد حساب خود شوید.</p></div>
@@ -1832,7 +1833,9 @@ $('#deleteBtn').onclick=async()=>{
     const d=await api('/api/me');
     if(d.authenticated){me=d.user;history.replaceState(null,'','/');startApp()}else showAuth();
   }catch(_){showAuth()}
+  finally{document.documentElement.classList.remove('boot')}
 })();
+setTimeout(()=>document.documentElement.classList.remove('boot'),5000);
 
 /* rules modal */
 const rl=$('#rules'),closeR=()=>{rl.hidden=true;document.body.style.overflow=pl.hidden?'':'hidden'};
