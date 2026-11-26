@@ -1455,7 +1455,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(img.buf);
     }
     if (u.pathname.startsWith('/api/')) return await api(req, res, u);
-    const name = (u.pathname === '/' || u.pathname === '/login' || u.pathname === '/register') ? 'index.html' : decodeURIComponent(u.pathname.slice(1));
+    const name = (u.pathname === '/' || u.pathname === '/login' || u.pathname === '/register') ? 'index.html' : u.pathname === '/favicon.ico' ? 'favicon-32.png' : decodeURIComponent(u.pathname.slice(1));
     return file(res, name);
   } catch (e) {
     console.error('[error]', e);
