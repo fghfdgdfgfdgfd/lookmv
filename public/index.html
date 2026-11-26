@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>lookmv | Watch Movie</title>
+<title>لوک مووی | تماشای فیلم</title>
+<meta property="og:title" content="لوک مووی | تماشای فیلم">
+<meta name="apple-mobile-web-app-title" content="لوک مووی">
+<meta name="application-name" content="لوک مووی">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;800&family=Orbitron:wght@800;900&display=swap">
 <style>
 :root{--d:1;--bg:#080b0a;--pn:#101614;--ln:#26302c;--tl:#52e39a;--pk:#f27a86;--yl:#e8b84a;--pu:#7fe3ee;--tx:#e8efea;--mt:#8a968f;--on:#04140a;--onpk:#2a0509;--sh:#0006;--spring:cubic-bezier(.32,.72,0,1);--pop:cubic-bezier(.34,1.56,.64,1);--slow:cubic-bezier(.4,0,.2,1)}
@@ -451,6 +454,21 @@ a:active,.t:active,.rowh:active,h1:active,h2:active,h3:active,footer span:active
 .db-label{min-width:0;color:var(--mt);font-size:14px;transition:color .2s}
 .db-label b{color:var(--tl);font-weight:800}
 @media(max-width:520px){.dbswitches{grid-template-columns:1fr;gap:9px}.db-toggle{padding:16px}.db-content-inner{padding-inline:16px}.db-panel.open .db-content-inner{padding-bottom:16px}}
+
+/* home chips: the chip wrapper must not break the flex gap; one tidy row on phones */
+#homeChips{display:contents}
+.chips{row-gap:12px;column-gap:10px}
+.chip{white-space:nowrap;flex:none;line-height:1;-webkit-tap-highlight-color:transparent}
+.sw{flex:none;white-space:nowrap;margin-inline-end:6px;-webkit-tap-highlight-color:transparent}
+@media(max-width:700px){
+  .chips{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;margin:18px -5vw;padding:6px 5vw 10px;gap:10px;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scroll-padding-inline:5vw}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{min-height:42px;padding:0 18px;font-size:14px;scroll-snap-align:start}
+  .sw{min-height:42px;gap:10px;padding-inline-end:4px;scroll-snap-align:start}
+  .sw i{flex:0 0 50px;width:50px;height:28px}
+  .sw i::after{width:20px;height:20px}
+  .sw input:checked+i::after{transform:translateX(calc(var(--d)*-22px))}
+}
 
 /* profile accordions: closed by default, hidden content is not focusable */
 .db-content{visibility:hidden;transition:grid-template-rows .48s var(--spring),opacity .28s ease,visibility 0s .48s}
@@ -1054,7 +1072,7 @@ const mix=(s,p)=>{let o='';for(let i=0;i<s.length;i++){const c=s[i];o+=c===' '||
 let swapping=false;
 function setLang(l,instant){
   if(l===lang||swapping)return;
-  const H=document.documentElement,flip=()=>{lang=l;H.lang=l;H.dir=l==='en'?'ltr':'rtl';document.title='lookmv | Watch Movie';attrs(document,l);$$('.scroll').forEach(e=>e.scrollLeft=0);try{localStorage.setItem('lg',l)}catch(_){}};
+  const H=document.documentElement,flip=()=>{lang=l;H.lang=l;H.dir=l==='en'?'ltr':'rtl';document.title=l==='en'?'LookMV | Watch Movies':'لوک مووی | تماشای فیلم';attrs(document,l);$$('.scroll').forEach(e=>e.scrollLeft=0);try{localStorage.setItem('lg',l)}catch(_){}};
   if(instant||REDUCED()){flip();tnodes(document.body).forEach(n=>n.nodeValue=translatedNode(n,l));return}
   swapping=true;const vis=[],rest=[];
   tnodes(document.body).forEach(n=>{const r=n.parentElement.getBoundingClientRect(),to=translatedNode(n,l);
@@ -1158,7 +1176,8 @@ const fade=r=>{const max=r.scrollWidth-r.clientWidth,rtl=getComputedStyle(r).dir
   r.classList.toggle('fl',max>2&&x-lo>1);r.classList.toggle('fr',max>2&&hi-x>1)};
 const fro='ResizeObserver'in window?new ResizeObserver(es=>es.forEach(e=>fade(e.target))):null;
 function bindScrollRows(root=document){
-  root.querySelectorAll('.scroll').forEach(r=>{
+  const rows=root.matches&&root.matches('.scroll')?[root]:root.querySelectorAll('.scroll');
+  rows.forEach(r=>{
     if(r._rowBound){fade(r);return}r._rowBound=true;
     r.addEventListener('wheel',e=>{
       if(e.ctrlKey||Math.abs(e.deltaX)>Math.abs(e.deltaY))return;

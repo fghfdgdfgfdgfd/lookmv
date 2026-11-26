@@ -100,7 +100,11 @@ function destroySession(req, res) {
 /* ------------------------------ catalog ------------------------------ */
 console.log('Loading movie catalog…');
 const catalog = readJSON(path.join(DATA, 'movies.json'), { movies: [], genres: [] });
-const MOVIES = catalog.movies || [];
+/* Titles without at least one downloadable video link are never shown anywhere
+ * (home rows, featured, search, categories, recommendations). */
+const hasDownload = m => (m.links || []).some(l => l && l.url && !l.sub);
+const MOVIES = (catalog.movies || []).filter(hasDownload);
+const DROPPED_NO_LINK = (catalog.movies || []).length - MOVIES.length;
 /* Episode/season are not stored in the source data (ep is always null),
  * so they are derived once at startup from the file name in each link. */
 function parseEpisode(url) {
@@ -361,7 +365,7 @@ const SEARCH_INDEX = MOVIES.map(m => ({
   ref: m,
   text: [m.title, m.titleEn, m.year, m.genre, ...(m.genres || [])].join(' ').toLowerCase().replace(/[\u200c\u200d]/g, ''),
 }));
-console.log(`  ${MOVIES.length} titles, ${(catalog.genres || []).length} genres`);
+console.log(`  ${MOVIES.length} titles (${DROPPED_NO_LINK} hidden: no download link), ${(catalog.genres || []).length} genres`);
 
 const FEATURED_POOL = MOVIES.filter(m => m.type === 'movie' && (m.links || []).some(l => !l.sub));
 function featured() {
@@ -1366,7 +1370,7 @@ async function api(req, res, u) {
 
   /* public catalog endpoints also require login, per "login at entry" */
   if (p === '/api/catalog') return json(res, 200, {
-    total: catalog.total ?? MOVIES.length, genres: catalog.genres || [],
+    total: MOVIES.length, genres: catalog.genres || [],
     generatedAt: catalog.generatedAt, sources: catalog.sources || [],
     duplicatesRemoved: catalog.duplicatesRemoved || 0,
   });
