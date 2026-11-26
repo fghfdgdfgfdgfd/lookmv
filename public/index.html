@@ -1554,6 +1554,16 @@ addEventListener('wheel',e=>{if(e.ctrlKey)e.preventDefault()},{passive:false});
 addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&['+','-','=','0'].includes(e.key))e.preventDefault()});
 ['selectstart','contextmenu','copy','cut','dragstart'].forEach(t=>document.addEventListener(t,e=>{if(!okEl(e.target))e.preventDefault()}));
 /* ---------- player ---------- */
+/* ---------- iPhone: "Watch" hands the stream straight to the VLC app (other devices keep the built-in player) ---------- */
+const IS_IPHONE=/iPhone|iPod/.test(navigator.userAgent);
+function vlcOpen(url){
+  const u=new URL(url,location.href).href;let left=false;
+  const h=()=>{if(document.hidden)left=true};
+  document.addEventListener('visibilitychange',h);addEventListener('pagehide',()=>{left=true},{once:true});
+  location.href='vlc-x-callback://x-callback-url/stream?url='+encodeURIComponent(u);
+  setTimeout(()=>{document.removeEventListener('visibilitychange',h);if(!left&&!document.hidden)toast('VLC روی گوشی نصب نیست؛ آن را از App Store نصب کنید')},2200);
+}
+const vlcBest=e=>{const q=QO.find(x=>e&&e.src&&e.src[x])||Object.keys((e&&e.src)||{})[0];return q?e.src[q]:null};
 const ic=(d,f)=>`<svg viewBox="0 0 24 24" fill="${f?'currentColor':'none'}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const SPK='<path d="M4 9.5v5h4l5 4v-13l-5 4z"/>';
 const PI={play:ic('<path d="M8 5.5v13l11-6.5z"/>',1),pause:ic('<path d="M8 5v14M16 5v14"/>'),prev:ic('<path d="M6 5v14"/><path d="M19 5.5v13L9 12z"/>',1),next:ic('<path d="M18 5v14"/><path d="M5 5.5v13L15 12z"/>',1),vol:ic(SPK+'<path d="M16.5 9a4 4 0 010 6M19 6.5a7.5 7.5 0 010 11"/>'),mute:ic(SPK+'<path d="M17 9.5l4 5M21 9.5l-4 5"/>'),list:ic('<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>'),subs:ic('<path d="M4 5h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7a2 2 0 012-2z"/><path d="M7 11h4M7 14h3M14 11h3M14 14h4"/>'),gear:ic('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>'),fs:ic('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),x:ic('<path d="M6 6l12 12M18 6L6 18"/>')};
@@ -1648,8 +1658,8 @@ function list(){
   $('#plLi').innerHTML=chips+rows;$('#plL').dir=document.documentElement.dir;tr();
 }
 function nav(){const n=P.m.eps.length;$('#plEp').hidden=n<2;$('#plPv').hidden=$('#plNx').hidden=n<2;$('#plPv').disabled=P.ep<1;$('#plNx').disabled=P.ep>=n-1}
-function start(i){clearSubs();P.ep=i;pl.classList.remove('pick');$('#plL').hidden=$('#plM').hidden=$('#plSubM').hidden=true;P.st=[];if(P.auto||!E().src[P.cur])P.auto=true,P.cur=autoQ();src(P.cur,0,true);list();nav();wake();loadSub()}
-function openPlayer(m){P.m=m;P.season=null;P.auto=true;clearSubs();V.removeAttribute('src');$('#plT').textContent=m.title;pl.hidden=false;$('#plM').hidden=$('#plSubM').hidden=true;document.body.style.overflow='hidden';nav();
+function start(i){if(IS_IPHONE){const u=vlcBest(P.m.eps[i]);if(u){P.ep=i;vlcOpen(u);return}}clearSubs();P.ep=i;pl.classList.remove('pick');$('#plL').hidden=$('#plM').hidden=$('#plSubM').hidden=true;P.st=[];if(P.auto||!E().src[P.cur])P.auto=true,P.cur=autoQ();src(P.cur,0,true);list();nav();wake();loadSub()}
+function openPlayer(m){if(IS_IPHONE&&m.eps.length<2){const u=vlcBest(m.eps[0]);if(u){vlcOpen(u);return}}P.m=m;P.season=null;P.auto=true;clearSubs();V.removeAttribute('src');$('#plT').textContent=m.title;pl.hidden=false;$('#plM').hidden=$('#plSubM').hidden=true;document.body.style.overflow='hidden';nav();
   if(m.eps.length>1){pl.classList.add('pick');P.ep=-1;$('#plS').textContent='';list();$('#plL').hidden=false}else{P.ep=0;start(0)}tr();$('#plX').focus()}
 function closePlayer(){clearSubs();V.pause();V.removeAttribute('src');V.load();clearTimeout(P.it);if(document.fullscreenElement)document.exitFullscreen();pl.hidden=true;pl.classList.remove('idle');$('#plM').hidden=$('#plSubM').hidden=true;document.body.style.overflow=''}
 function wake(){pl.classList.remove('idle');clearTimeout(P.it);if(!V.paused&&$('#plM').hidden&&$('#plSubM').hidden&&!pk())P.it=setTimeout(()=>pl.classList.add('idle'),2800)}
