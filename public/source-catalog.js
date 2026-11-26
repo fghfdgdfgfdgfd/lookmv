@@ -452,6 +452,37 @@
     return { items: items, hasMore: hasMore };
   }
 
+  /* Relevance filter. The source sites use loose full-text search (a WordPress search for "gt"
+     also matches "&gt;" inside the page HTML, animex does fuzzy matching, ...), so results that do
+     not actually contain the typed words in their title are dropped and the rest is ranked. */
+  function normQ(x) {
+    return String(x || '').toLowerCase()
+      .replace(/[\u200c\u200d\u064B-\u065F\u0670\u0640]/g, '')
+      .replace(/[\u064A\u0649]/g, '\u06CC').replace(/\u0643/g, '\u06A9').replace(/[\u0622\u0623\u0625]/g, '\u0627')
+      .replace(/[\u06F0-\u06F9]/g, function (c) { return String(c.charCodeAt(0) - 0x06F0); })
+      .replace(/[\u0660-\u0669]/g, function (c) { return String(c.charCodeAt(0) - 0x0660); })
+      .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  }
+  function relScore(it, q) {
+    var qn = normQ(q);
+    if (!qn) return 3;
+    var hay = normQ((it.title || '') + ' | ' + (it.titleEn || '')), hayC = hay.replace(/ /g, '');
+    var tokens = qn.split(' '), ok = tokens.every(function (t) { return hay.indexOf(t) >= 0 || hayC.indexOf(t) >= 0; });
+    if (!ok && hayC.indexOf(qn.replace(/ /g, '')) < 0) return -1;
+    var names = [normQ(it.title), normQ(it.titleEn)];
+    if (names.some(function (n) { return n === qn; })) return 0;
+    if (names.some(function (n) { return n.indexOf(qn) === 0; })) return 1;
+    if (names.some(function (n) { return (' ' + n).indexOf(' ' + qn) >= 0; })) return 2;
+    return 3;
+  }
+  function relFilter(items, q) {
+    return (items || []).filter(function (it) { return relScore(it, q) >= 0; });
+  }
+  function relSort(items, q) {
+    return items.map(function (it, i) { return { it: it, i: i, s: relScore(it, q) }; })
+      .sort(function (a, b) { return a.s - b.s || a.i - b.i; }).map(function (x) { return x.it; });
+  }
+
   async function search(q, page, limit) {
     var p = page || 1, per = limit || 30;
     var term = String(q || '').trim();
@@ -489,6 +520,7 @@
       (hit.results || []).forEach(function (x) { items.push(mapDoostiHit(x)); });
       if (hit.has_more) hasMore = true;
     }
+    items = relSort(relFilter(items, term), term);
     if (!items.length) throw new Error('search unavailable');
     return { items: items, hasMore: hasMore };
   }
@@ -533,11 +565,13 @@
     ];
     return Promise.all(jobs.map(function (j) {
       return j.then(function (items) {
+        items = relFilter(items, term);
         if (items.length) { all = all.concat(items); if (onItems) onItems(items); }
       }, function () { /* one failing source must not hide the others */ });
     })).then(function () {
       if (signal && signal.aborted) throw new Error('aborted');
       if (!all.length) throw new Error('search unavailable');
+      all = relSort(all, term);
       searchCache.set(key, { t: Date.now(), items: all, hasMore: hasMore });
       if (searchCache.size > 40) searchCache.delete(searchCache.keys().next().value);
       return { items: all, hasMore: hasMore };
