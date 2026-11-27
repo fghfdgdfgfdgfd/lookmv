@@ -446,19 +446,7 @@ html.boot body{visibility:hidden}
 .db-content-inner{min-height:0;overflow:hidden;padding:0 22px;transition:padding-bottom .4s var(--spring)}
 .db-panel.open .db-content-inner{padding-bottom:22px}
 .db-content-inner>p{padding-top:2px;color:var(--mt);line-height:1.8}
-.dbswitches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}
-.db-switchrow{position:relative;display:flex;align-items:center;gap:12px;min-height:58px;padding:11px 14px;border:1px solid var(--ln);border-radius:16px;background:color-mix(in srgb,var(--bg) 40%,transparent);cursor:pointer;transition:border-color .25s,background .25s,transform .25s}
-.db-switchrow:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--tl) 45%,var(--ln))}
-.db-switchrow input{position:absolute;width:1px;height:1px;opacity:0}
-.db-switch{position:relative;display:block;flex:0 0 42px;width:42px;height:24px;border:1px solid var(--ln);border-radius:999px;background:color-mix(in srgb,var(--tx) 9%,var(--bg));transition:background .28s,border-color .28s}
-.db-switch::after{content:'';position:absolute;top:3px;inset-inline-start:3px;width:16px;height:16px;border-radius:50%;background:var(--mt);box-shadow:0 1px 4px #0004;transition:transform .32s var(--spring),background .25s}
-.db-switchrow input:checked+.db-switch{background:color-mix(in srgb,var(--tl) 28%,var(--bg));border-color:var(--tl)}
-.db-switchrow input:checked+.db-switch::after{background:var(--tl);transform:translateX(calc(var(--d)*-17px))}
-.db-switchrow input:focus-visible+.db-switch{outline:2px solid var(--yl);outline-offset:3px}
-.db-switchrow input:checked~.db-label{color:var(--tx)}
-.db-label{min-width:0;color:var(--mt);font-size:14px;transition:color .2s}
-.db-label b{color:var(--tl);font-weight:800}
-@media(max-width:520px){.dbswitches{grid-template-columns:1fr;gap:9px}.db-toggle{padding:16px}.db-content-inner{padding-inline:16px}.db-panel.open .db-content-inner{padding-bottom:16px}}
+@media(max-width:520px){.db-toggle{padding:16px}.db-content-inner{padding-inline:16px}.db-panel.open .db-content-inner{padding-bottom:16px}}
 
 /* home chips: the chip wrapper must not break the flex gap; one tidy row on phones */
 #homeChips{display:contents}
@@ -481,6 +469,38 @@ html.boot body{visibility:hidden}
 .db-content-inner .pfield{padding:4px 0 0!important;border:0}
 .db-danger .db-heading-icon{color:var(--pk);background:color-mix(in srgb,var(--pk) 13%,transparent)}
 .db-danger .db-toggle[aria-expanded=true] .db-chevron{color:var(--pk)}
+
+/* ---------- stats accordion + admin message + one-time notice ---------- */
+.stat-live{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--ln);border-radius:16px;background:color-mix(in srgb,var(--bg) 40%,transparent)}
+.stat-dot{flex:0 0 10px;width:10px;height:10px;border-radius:50%;background:var(--tl);box-shadow:0 0 0 0 color-mix(in srgb,var(--tl) 60%,transparent);animation:statPulse 1.8s infinite}
+@keyframes statPulse{70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.stat-label{flex:1;min-width:0;color:var(--mt);font-size:14px}
+.stat-live b{font-size:26px;font-weight:800;color:var(--tl);line-height:1;font-variant-numeric:tabular-nums}
+.msgbox{display:grid;gap:10px;margin-top:18px!important}
+.msgbox h3{font-size:15px;display:flex;align-items:center;gap:8px}
+.msgbox h3 svg{width:18px;height:18px;color:var(--tl)}
+.msgbox textarea{direction:rtl;text-align:right;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;line-height:1.9;min-height:120px;resize:vertical}
+.msgfoot{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.msgfoot small{color:var(--mt);font-size:12px;font-variant-numeric:tabular-nums}
+.sendbtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 22px;border:0;border-radius:999px;background:var(--tl);color:var(--on);font:inherit;font-weight:800;cursor:pointer;transition:transform .5s var(--pop),filter .25s,opacity .25s}
+.sendbtn:hover{transform:translateY(-1px);filter:brightness(1.07)}
+.sendbtn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.sendbtn svg{width:18px;height:18px}
+html[dir=rtl] .sendbtn svg{transform:scaleX(-1)}
+.msgnote{color:var(--mt);font-size:12px;line-height:1.8}
+.ntc{direction:rtl;text-align:right}
+.ntbody{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;direction:rtl;text-align:right;line-height:2;font-size:15px;color:var(--tx);-webkit-user-select:text;user-select:text}
+.ntok{width:100%;margin-top:20px;min-height:48px;border:0;border-radius:999px;background:var(--tl);color:var(--on);font:inherit;font-weight:800;cursor:pointer;transition:transform .5s var(--pop),filter .25s}
+.ntok:hover{filter:brightness(1.07)}
+
+/* emergency shutdown overlay (covers an already-open page) */
+#maint{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:20px;overflow:auto;background:var(--bg)}
+#maint[hidden]{display:none}
+#maint .mc{width:min(520px,100%);padding:32px 26px;border-radius:26px;background:var(--pn);border:1px solid var(--ln);text-align:center;box-shadow:0 30px 80px var(--sh)}
+#maint .mi{width:64px;height:64px;margin:0 auto 18px;display:grid;place-items:center;border-radius:50%;color:var(--pk);background:color-mix(in srgb,var(--pk) 14%,transparent)}
+#maint .mi svg{width:32px;height:32px}
+#maint h2{margin:0 0 14px;font-size:22px}
+#maint p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;direction:rtl;text-align:right;line-height:2;color:var(--mt);-webkit-user-select:text;user-select:text}
 
 /* category cards: no corner artifacts on hover */
 .box{position:relative;isolation:isolate;overflow:hidden;background-clip:padding-box;backface-visibility:hidden;-webkit-tap-highlight-color:transparent;outline:0}
@@ -607,9 +627,17 @@ html.boot body{visibility:hidden}
 
 <section class="view pad" id="v-me" hidden>
   <div class="who rv"><div class="av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg></div><div><h2 id="meName">حساب من</h2><span class="emailbig" id="meEmail"></span></div></div>
-  <section class="panel db-panel rv" id="dbPanel">
-    <button class="db-toggle" id="dbToggle" type="button" aria-expanded="false" aria-controls="dbContent"><span><i class="db-heading-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/><path d="M4 8c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></i>تنظیم دیتابیس‌های جستجو</span><svg class="db-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
-    <div class="db-content" id="dbContent"><div class="db-content-inner"><p>منابع را جداگانه روشن یا خاموش کنید؛ جستجو در هر منبع مهلت پاسخ دارد.</p><div class="dbswitches"><label class="db-switchrow"><input type="checkbox" data-db="d1" checked><span class="db-switch"></span><span class="db-label"><b>d1</b> · Animex</span></label><label class="db-switchrow"><input type="checkbox" data-db="d2" checked><span class="db-switch"></span><span class="db-label"><b>d2</b> · Atlasmind</span></label><label class="db-switchrow"><input type="checkbox" data-db="d3" checked><span class="db-switch"></span><span class="db-label"><b>d3</b> · Zardfilm</span></label><label class="db-switchrow"><input type="checkbox" data-db="d4" checked><span class="db-switch"></span><span class="db-label"><b>d4</b> · Doostihaa</span></label></div></div></div>
+  <section class="panel db-panel rv" id="statsPanel">
+    <button class="db-toggle" type="button" aria-expanded="false" aria-controls="statsContent"><span><i class="db-heading-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></i>آمار</span><svg class="db-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+    <div class="db-content" id="statsContent"><div class="db-content-inner">
+      <div class="stat-live" role="status"><span class="stat-dot" aria-hidden="true"></span><span class="stat-label">کاربران آنلاین در همین لحظه</span><b id="liveCount" dir="ltr">—</b></div>
+      <div class="pfield msgbox">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H8l-5 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>پیام به مدیر</h3>
+        <textarea class="ta" id="adminMsg" dir="rtl" maxlength="1000" rows="4" placeholder="پیام خود را بنویسید…" aria-label="متن پیام"></textarea>
+        <div class="msgfoot"><small id="msgCount" dir="ltr">0 / 1000</small><button class="sendbtn" id="sendMsgBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg><span>ارسال</span></button></div>
+        <p class="msgnote">ایمیل حساب شما همراه پیام برای مدیر ارسال می‌شود.</p>
+      </div>
+    </div></div>
   </section>
   <section class="panel db-panel rv" id="emailPanel">
     <button class="db-toggle" type="button" aria-expanded="false" aria-controls="emailContent"><span><i class="db-heading-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 7l9 6 9-6"/></svg></i>ایمیل حساب</span><svg class="db-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -711,6 +739,17 @@ html.boot body{visibility:hidden}
   <p class="mdn">حقوق فیلم‌ها و سریال‌ها متعلق به صاحبان اثر است. برای درخواست حذف محتوا از بخش «تماس با ما» اقدام کنید.</p>
 </div></div>
 
+<div id="maint" hidden role="alertdialog" aria-modal="true" aria-labelledby="mtT"><div class="mc" dir="rtl">
+  <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg></div>
+  <h2 id="mtT">سایت موقتاً در دسترس نیست</h2><p id="mtBody"></p>
+</div></div>
+
+<div class="mdl" id="notifModal" hidden role="dialog" aria-modal="true" aria-labelledby="ntT"><div class="mdc ntc" dir="rtl">
+  <div class="mdh"><h2 id="ntT">اعلان</h2><button class="mx" id="ntX" type="button" aria-label="بستن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <p class="ntbody" id="ntBody"></p>
+  <button class="ntok" id="ntOk" type="button">متوجه شدم</button>
+</div></div>
+
 <div id="auth" hidden>
   <div class="acard">
     <div class="logo" dir="ltr"><span class="lt">lookmv</span><svg class="bolt" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><g fill="none" stroke-linejoin="miter" vector-effect="non-scaling-stroke"><path class="gap" d="M57 -2L50 9L60 15L48 26L58 31L50 42M60 15L68 20L65 28"/><path class="core" d="M57 -2L50 9L60 15L48 26L58 31L50 42M60 15L68 20L65 28"/></g></svg></div>
@@ -739,10 +778,21 @@ const SPRING='cubic-bezier(.32,.72,0,1)';let lang='fa';
 const api=async(path,opt={})=>{
   const r=await fetch(path,{credentials:'same-origin',...opt,headers:opt.body?{'Content-Type':'application/json',...(opt.headers||{})}:opt.headers});
   let d={};try{d=await r.json()}catch(_){}
-  if(!r.ok){const e=new Error(d.error||'request_failed');e.code=d.error;throw e}
+  if(!r.ok){if(r.status===503&&d.error==='maintenance')showMaintenance(d.text);const e=new Error(d.error||'request_failed');e.code=d.error;throw e}
   return d;
 };
 const post=(path,data)=>api(path,{method:'POST',body:JSON.stringify(data||{})});
+/* emergency shutdown: the server answers every API call with 503 "maintenance" while it is on */
+let maintT=null;
+function showMaintenance(text){
+  const m=document.getElementById('maint');if(!m)return;
+  document.getElementById('mtBody').textContent=text||'';
+  m.hidden=false;document.body.style.overflow='hidden';
+  document.querySelectorAll('video,audio').forEach(v=>{try{v.pause()}catch(_){}});
+  if(!maintT)maintT=setInterval(async()=>{
+    try{const r=await fetch('/api/status',{cache:'no-store'}),d=await r.json();if(d&&d.maintenance===false)location.reload()}catch(_){}
+  },15000);
+}
 /* The local catalog is now only a small cache of atlasmind links + a fallback. */
 const LOCAL_SUM=new Map();
 if(window.SourceCatalog)window.SourceCatalog.local={
@@ -759,8 +809,22 @@ const toast=(msg,err=false)=>{
   clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),3200)};
 
 let me=null,catalog={total:0,genres:[]},featuredMovie=null;
-const saved=new Set((()=>{try{return JSON.parse(localStorage.getItem('lm_saved')||'[]')}catch(_){return []}})());
-const persistSaved=()=>{try{localStorage.setItem('lm_saved',JSON.stringify([...saved]))}catch(_){}};
+/* My List and notes live on the server (Telegram channel), per account — never in this browser.
+   The old localStorage copies are moved to the account once, then deleted (see migrateLocal). */
+const saved=new Set();
+const setSaved=ids=>{saved.clear();(ids||[]).forEach(i=>saved.add(i))};
+const syncBookmarks=()=>$$('.bm[data-id]').forEach(x=>x.classList.toggle('sv',saved.has(x.dataset.id)));
+async function migrateLocal(){
+  try{
+    const ids=JSON.parse(localStorage.getItem('lm_saved')||'[]');
+    if(Array.isArray(ids)&&ids.length){const d=await post('/api/mylist/import',{ids});setSaved(d.ids);syncBookmarks()}
+    const notes={},keys=[];
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('lm_cm_'))keys.push(k)}
+    keys.forEach(k=>{try{const l=JSON.parse(localStorage.getItem(k)||'[]');if(Array.isArray(l)&&l.length)notes[k.slice(6)]=l.map(c=>({t:'',x:c&&c.x}))}catch(_){}});
+    if(Object.keys(notes).length)await post('/api/notes/import',{notes});
+    localStorage.removeItem('lm_saved');keys.forEach(k=>localStorage.removeItem(k));
+  }catch(_){/* keep the local copy and try again next time */}
+}
 const SUMMARIES=new Map(),DETAILS=new Map(),ENRICH=new Map(),ENR=new Map();
 const COVERS=new Map(),COVNO=new Set();
 let dlS={season:null,shown:80,open:new Set(),qopen:new Set(),gm:{}};
@@ -877,6 +941,13 @@ function paintHomeRow(sel,items,top,k){
   el.innerHTML=items.map((m,i)=>card(m,i,top)).join('')+MORE(k);
   loadCovers(items);
 }
+/* tell the server which "new / top" rows this browser built today; the server keeps the first report of each day in the channel log */
+let homeReportedDay='';
+function reportHome(latest,top){
+  const day=new Date().toISOString().slice(0,10);if(homeReportedDay===day)return;homeReportedDay=day;
+  const pick=a=>(a||[]).slice(0,20).map(m=>({id:m.id,title:m.title||m.titleEn||''}));
+  post('/api/home-report',{latest:pick(latest),top:pick(top)}).catch(()=>{homeReportedDay=''});
+}
 async function refreshHome(){
   if(homeRefreshing)return;
   homeRefreshing=true;
@@ -884,7 +955,7 @@ async function refreshHome(){
     const [latest,top]=await Promise.all([fetchItems('sort=new&limit=12','new'),fetchItems('sort=rating&limit=10','top')]);
     paintHomeRow('[data-row=new]',latest.items,false,'new');
     paintHomeRow('[data-row=top]',top.items,true,'top');
-    saveHome(latest,top);
+    saveHome(latest,top);reportHome(latest.items,top.items);
   }catch(e){
     if(!$('[data-row=new]').children.length){
       await Promise.all([
@@ -956,7 +1027,9 @@ async function renderList(){
 }
 /* bookmark + cover-download buttons: handled first (capture phase) so the card underneath never opens */
 function toggleSave(b){
-  const id=b.dataset.id,was=saved.has(id);was?saved.delete(id):saved.add(id);persistSaved();
+  const id=b.dataset.id,was=saved.has(id);was?saved.delete(id):saved.add(id);
+  const sm=SUMMARIES.get(id)||(currentMovie&&currentMovie.id===id?currentMovie:null),title=(sm&&(sm.title||sm.titleEn))||b.closest('.c')?.querySelector('h3,.t,.nm')?.textContent||'';
+  post('/api/mylist',{id,on:!was,title}).then(d=>{if(d&&d.ids){setSaved(d.ids);syncBookmarks()}}).catch(()=>{was?saved.add(id):saved.delete(id);syncBookmarks();toast('ذخیره نشد؛ دوباره تلاش کنید',true)});
   $$('.bm[data-id="'+CSS.escape(id)+'"]').forEach(x=>x.classList.toggle('sv',saved.has(id)));
   b.animate([{transform:'scale(1)'},{transform:'scale(.8)'},{transform:'scale(1.2)'},{transform:'scale(1)'}],{duration:600,easing:SPRING});
   if(was&&!$('#v-list').hidden){
@@ -1066,6 +1139,7 @@ const EN={'در حال بارگذاری بیشتر…':'Loading more…','در �
 '[نام کاربر]':'[User name]','دانلود فقط با وای‌فای':'Download on Wi-Fi only','اعلان فیلم‌های جدید':'New movie alerts',
 'هنوز فیلمی ذخیره نکرده‌اید. روی نشان ذخیره در پوستر فیلم‌ها بزنید.':'Nothing saved yet. Tap the save icon on a movie poster.','برای پیشنهادهای شخصی، چند فیلم به «لیست من» اضافه کنید.':'Add a few titles to My List to get personal recommendations.','برای ژانرهای این لیست، پیشنهاد تازه‌ای پیدا نشد.':'No new recommendations were found for these genres.','پیشنهادها بارگذاری نشدند.':'Recommendations could not be loaded.','افزودن زیرنویس':'Add subtitle','افزودن فایل زیرنویس':'Add subtitle file','فایل SRT یا VTT را انتخاب کنید':'Choose an SRT or VTT file','زیرنویس دستی اضافه شد':'Manual subtitle added','خواندن فایل زیرنویس ممکن نشد':'Could not read subtitle file','زیرنویس خودکار':'Auto subtitles','زیرنویس موجود را خودکار بارگذاری کن':'Load available subtitles automatically','تنظیمات زیرنویس':'Subtitle settings','ظاهر و نمایش زیرنویس':'Subtitle appearance','اندازه نوشته':'Text size','کوچک':'Small','بزرگ':'Large','رنگ متن':'Text color','پس‌زمینه':'Background','بازنشانی ظاهر زیرنویس':'Reset subtitle appearance',
 'بیشتر':'More','باکس دانلود':'Download box','نظرات':'Comments','ادامه':'More','کمتر':'Less','نظر خود را بنویسید...':'Write your comment...','ارسال نظر':'Post comment','همین الان':'Just now','۵ ساعت پیش':'5 hours ago','۲ روز پیش':'2 days ago','[متن نظر کاربر]':'[User comment text]','دوبله فارسی':'Persian dub','زیرنویس فارسی چسبیده':'Hardsub (Persian)','نسخه اصلی':'Original version','نسخه':'versions','سال ساخت':'Year','امتیاز IMDb':'IMDb rating','بخش‌ها':'Sections','بازگشت':'Back','نمایش بیشتر':'Show more','فصل':'Season','پوشه‌ی کامل فصل‌ها':'Full season folders','پوشه':'Folder','[متن حق نشر]':'[Copyright text]','درباره ما':'About','قوانین':'Terms','تماس':'Contact','در حال بارگذاری…':'Loading…','تریلر':'Trailer','پخش لینک':'Play link','حساب من':'My account','تنظیم دیتابیس‌های جستجو':'Search database settings','منابع را جداگانه روشن یا خاموش کنید؛ جستجو در هر منبع مهلت پاسخ دارد.':'Turn each source on or off separately; every source has a response timeout during search.','ایمیل حساب':'Account email','برای تغییر ایمیل، رمز فعلی خود را وارد کنید.':'Enter your current password to change your email.','تغییر ایمیل':'Change email','تغییر رمز عبور':'Change password','تغییر رمز':'Change password','پس از تغییر رمز، از تمام دستگاه ها خارج می شوید.':'After changing your password you will be signed out of all devices.','خروج از حساب':'Sign out','لیست من در همین مرورگر باقی می ماند.':'Your list stays in this browser.','حذف حساب':'Delete account','این عمل غیرقابل بازگشت است. برای تأیید، رمز خود را وارد کنید.':'This cannot be undone. Enter your password to confirm.','حذف دائمی حساب':'Delete account permanently','خوش آمدید':'Welcome','برای دسترسی به فیلم ها وارد حساب خود شوید.':'Sign in to your account to access movies.','ورود':'Sign in','ثبت نام':'Sign up','ایمیل':'Email','رمز عبور':'Password','ورود به سایت':'Sign in to the site','حساب ندارید؟ روی «ثبت نام» بزنید.':'No account? Tap “Sign up”.','جستجوی فیلم':'Search movies','نام فیلم یا سریال را بنویسید…':'Type a movie or series name…','https://… لینک مستقیم فیلم':'https://… direct movie link','ایمیل جدید':'New email','رمز فعلی':'Current password','رمز جدید (حداقل ۸ کاراکتر)':'New password (at least 8 characters)','تکرار رمز جدید':'Repeat new password','امتیاز':'Rating','حداقل ۸ کاراکتر':'At least 8 characters','سایت':'Site','ابتدا چند فیلم به لیست من اضافه کنید':'First add a few movies to My list','خطا در بارگذاری لیست من':'Error loading My list','این یک سریال است؛ قسمت مورد نظر را در باکس دانلود انتخاب کنید':'This is a series; choose the episode in the download box','لینک دانلودی برای این عنوان ثبت نشده است':'No download link is registered for this title','لینک دانلودی برای این عنوان ثبت نشده است.':'No download link is registered for this title.','اطلاعات فیلم بارگذاری نشد':'Movie details could not be loaded','نتایج جستجو':'Search results','نتایج جستجو:':'Search results:','خطا در بارگذاری فیلم ها':'Error loading movies','دوبله':'Dubbed','زیرنویس':'Subtitled','بدون سانسور':'Uncensored','سانسور':'Censored','اصلی':'Original','نامشخص':'Unknown','کاربر':'User','برای این عنوان تریلری یافت نشد':'No trailer found for this title','خلاصه ای از بیوگرافی این عنوان در دیتابیس موجود نیست.':'No biography summary is available for this title in the database.','برای بارگذاری فیلم ها وارد شوید.':'Sign in to load movies.','فایل قابل پخش برای این عنوان نیست؛ از باکس دانلود استفاده کنید':'No playable file for this title; use the download box','سرعت پخش':'Playback speed','اندازه زیرنویس':'Subtitle size','رنگ زیرنویس':'Subtitle color','پس‌زمینه زیرنویس':'Subtitle background','در حال جستجو در دیتابیس‌های روشن…':'Searching the enabled databases…','جستجو در دسترس نیست.':'Search is unavailable.','نتیجه‌ای پیدا نشد یا دیتابیس‌ها پاسخ ندادند.':'No results found, or the databases did not respond.','نسخهٔ قابل پخش برای این عنوان پیدا نشد.':'No playable version found for this title.','در حال دریافت فصل‌ها و نسخه‌ها…':'Fetching seasons and versions…','جزئیات این عنوان بارگذاری نشد. دوباره انتخاب کنید.':'Details for this title could not be loaded. Select it again.','لینک فیلم را وارد کنید':'Enter the movie link','لینک معتبر وارد کنید':'Enter a valid link','پخش از لینک':'Play from link','ایمیل معتبر نیست':'Invalid email','رمز عبور باید حداقل ۸ کاراکتر باشد':'Password must be at least 8 characters','این ایمیل قبلاً ثبت شده است':'This email is already registered','ایمیل یا رمز عبور اشتباه است':'Incorrect email or password','رمز فعلی اشتباه است':'Current password is incorrect','تلاش زیاد؛ کمی صبر کنید':'Too many attempts; please wait a moment','لطفاً دوباره وارد شوید':'Please sign in again','خطای سرور':'Server error','خطا رخ داد':'An error occurred','ساخت حساب جدید':'Create a new account','با ایمیل و رمز عبور حساب خود بسازید.':'Create your account with email and password.','ثبت نام و ورود':'Sign up and sign in','حساب دارید؟ روی «ورود» بزنید.':'Have an account? Tap “Sign in”.','ایمیل و رمز را وارد کنید':'Enter email and password','لطفاً صبر کنید…':'Please wait…','ایمیل و رمز فعلی را وارد کنید':'Enter email and current password','ایمیل با موفقیت تغییر کرد':'Email changed successfully','تکرار رمز مطابقت ندارد':'Passwords do not match','تمام فیلدها را پر کنید':'Fill in all fields','رمز تغییر کرد؛ دوباره وارد شوید':'Password changed; please sign in again','از حساب خارج شدید':'You have been signed out','برای تأیید رمز خود را وارد کنید':'Enter your password to confirm','حذف حساب غیرقابل بازگشت است. آیا تأیید می کنید؟':'Deleting your account cannot be undone. Do you confirm?','حساب حذف شد':'Account deleted',};
+Object.assign(EN,{'سایت موقتاً در دسترس نیست':'The site is temporarily unavailable','آمار':'Stats','کاربران آنلاین در همین لحظه':'Users online right now','پیام به مدیر':'Message the admin','پیام خود را بنویسید…':'Write your message…','متن پیام':'Message text','ارسال':'Send','ایمیل حساب شما همراه پیام برای مدیر ارسال می‌شود.':'Your account email is sent to the admin along with the message.','اعلان':'Notice','متوجه شدم':'Got it','پیام ارسال شد':'Message sent','پیام را بنویسید':'Write a message first','پیام حداکثر ۱۰۰۰ کاراکتر است':'Messages are limited to 1000 characters','ارسال پیام فعلاً در دسترس نیست':'Sending messages is unavailable right now','ارسال پیام انجام نشد؛ دوباره تلاش کنید':'Could not send the message; please try again'});
 const N=x=>x.replace(/[\u200c\u200d\s]+/g,''),EN2=Object.fromEntries(Object.entries(EN).map(([k,v])=>[N(k),v]));
 const trEn=k=>{const d=EN2[N(k)];if(d!==undefined)return d;if(k.includes(' · ')){const p=k.split(' · ').map(x=>EN2[N(x)]??x),c=k.split(' · ').some(x=>N(x) in EN2);return c?p.join(' · '):undefined}},T=(k,l)=>l==='en'?(trEn(k)??k):k,GL='!<>-_\\/[]{}=+*^?#%&@$0123456789';
 function tnodes(root){const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>/^(SCRIPT|STYLE|NOSCRIPT)$/.test(n.parentElement.tagName)||!n.nodeValue.trim()?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT}),a=[];let n;
@@ -1241,8 +1315,11 @@ const CH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-widt
 const USER='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
 let currentMovie=null,enInfo={},flatLinks=[],prevView='home',mvIdx='';
 const cms={};
-const getCms=id=>{if(!cms[id]){try{cms[id]=JSON.parse(localStorage.getItem('lm_cm_'+id)||'[]')}catch(_){cms[id]=[]}}return cms[id]};
-const saveCms=id=>{try{localStorage.setItem('lm_cm_'+id,JSON.stringify(getCms(id)))}catch(_){}};
+const getCms=id=>cms[id]||(cms[id]=[]);
+async function loadCms(id){
+  try{const d=await api('/api/notes?movie='+encodeURIComponent(id));cms[id]=d.notes||[];if(mvIdx===id)renderCms()}catch(_){}
+}
+const cmTime=t=>{try{const d=new Date(t);return isNaN(d)?(t||''):d.toLocaleString(lang==='en'?'en-GB':'fa-IR',{dateStyle:'medium',timeStyle:'short'})}catch(_){return t||''}};
 
 const rankQ=q=>{const i=QO.indexOf(q);return i<0?99:i};
 function buildGroups(m){
@@ -1331,11 +1408,15 @@ $('#accs').addEventListener('click',e=>{
 
 function renderCms(){
   const l=getCms(mvIdx);$('#cmCount').textContent=l.length;
-  $('#cmList').innerHTML=l.map(c=>`<div class="cm"><div class="av">${USER}</div><div class="bd2"><h4><span>${esc(c.n)}</span><time>${esc(c.t)}</time></h4><p>${esc(c.x)}</p></div></div>`).join('');
+  $('#cmList').innerHTML=l.map(c=>`<div class="cm"><div class="av">${USER}</div><div class="bd2"><h4><span>${esc(c.n||me?.email?.split('@')[0]||'کاربر')}</span><time>${esc(cmTime(c.t))}</time></h4><p>${esc(c.x)}</p></div></div>`).join('');
   if(lang==='en')applyInstant($('#v-movie'),'en');
 }
-$('#cmSend').onclick=()=>{const ta=$('#cmText'),t=ta.value.trim();if(!t){ta.focus();return}
-  getCms(mvIdx).unshift({n:me?.email?.split('@')[0]||'کاربر',t:'همین الان',x:t});saveCms(mvIdx);ta.value='';renderCms()};
+$('#cmSend').onclick=async()=>{const ta=$('#cmText'),t=ta.value.trim();if(!t){ta.focus();return}
+  const id=mvIdx,b=$('#cmSend');b.disabled=true;
+  try{const d=await post('/api/notes',{movie:id,text:t,title:currentMovie&&(currentMovie.title||currentMovie.titleEn)||''});
+    getCms(id).unshift({n:me?.email?.split('@')[0]||'کاربر',t:d.note.t,x:d.note.x});ta.value='';if(mvIdx===id)renderCms()}
+  catch(e){toast(e.code==='note_too_long'?'یادداشت خیلی طولانی است':'یادداشت ذخیره نشد؛ دوباره تلاش کنید',true)}
+  b.disabled=false};
 
 /* player model: a series gets one entry per episode (so "Watch" shows the episode list); a film gets a single entry */
 function playerModel(m){
@@ -1436,7 +1517,7 @@ async function openMovie(id,toDl){
   sum.textContent=m.plot||'خلاصه ای از بیوگرافی این عنوان در دیتابیس موجود نیست.';
   sum.classList.remove('open');sumb.setAttribute('aria-expanded','false');
   $('#accs').innerHTML=accHTML(m);
-  cms[id]=getCms(id);renderCms();$('#cmText').value='';
+  cms[id]=cms[id]||[];renderCms();loadCms(id);$('#cmText').value='';
   stopTrailer();
   setTab('dl');
   if(lang==='en')applyInstant($('#v-movie'),'en');
@@ -1769,7 +1850,7 @@ advFlow.addEventListener('click',e=>{
 $('#advUrlPlay').onclick=()=>{const url=$('#advUrl').value.trim();if(!url)return toast('لینک فیلم را وارد کنید',true);if(!/^https?:\/\//i.test(url))return toast('لینک معتبر وارد کنید',true);P.manualSub=null;openPlayer({title:'پخش از لینک',year:'',multi:false,eps:[{n:1,s:1,src:{'720p':url},sub:null,soft:false}]});};
 document.addEventListener('click',e=>{if(!e.target.closest('.adv-search')){advResults.hidden=true;advSearch.setAttribute('aria-expanded','false')}});
 /* ---------- auth + account ---------- */
-const ERR={invalid_email:'ایمیل معتبر نیست',weak_password:'رمز عبور باید حداقل ۸ کاراکتر باشد',email_exists:'این ایمیل قبلاً ثبت شده است',invalid_credentials:'ایمیل یا رمز عبور اشتباه است',wrong_password:'رمز فعلی اشتباه است',too_many_requests:'تلاش زیاد؛ کمی صبر کنید',unauthorized:'لطفاً دوباره وارد شوید',server_error:'خطای سرور'};
+const ERR={invalid_email:'ایمیل معتبر نیست',weak_password:'رمز عبور باید حداقل ۸ کاراکتر باشد',email_exists:'این ایمیل قبلاً ثبت شده است',invalid_credentials:'ایمیل یا رمز عبور اشتباه است',wrong_password:'رمز فعلی اشتباه است',too_many_requests:'تلاش زیاد؛ کمی صبر کنید',unauthorized:'لطفاً دوباره وارد شوید',server_error:'خطای سرور',empty_message:'پیام را بنویسید',message_too_long:'پیام حداکثر ۱۰۰۰ کاراکتر است',messaging_unavailable:'ارسال پیام فعلاً در دسترس نیست',message_failed:'ارسال پیام انجام نشد؛ دوباره تلاش کنید'};
 const errMsg=e=>ERR[e?.code||e?.message]||'خطا رخ داد';
 
 let authMode='login';
@@ -1786,7 +1867,7 @@ function setAuthMode(m){
 $('#tabLogin').onclick=()=>{history.replaceState(null,'','/login');setAuthMode('login')};
 $('#tabSignup').onclick=()=>{history.replaceState(null,'','/register');setAuthMode('signup')};
 function showAuth(){
-  me=null;$('#auth').hidden=false;$('#authPass').value='';$('#authErr').textContent='';
+  me=null;saved.clear();Object.keys(cms).forEach(k=>delete cms[k]);stopPresence();$('#auth').hidden=false;$('#authPass').value='';$('#authErr').textContent='';
   const mode=location.pathname==='/register'?'signup':'login';if(!['/login','/register'].includes(location.pathname))history.replaceState(null,'','/login');
   setAuthMode(mode);
 }
@@ -1796,20 +1877,58 @@ async function submitAuth(){
   const btn=$('#authSubmit');btn.disabled=true;btn.textContent='لطفاً صبر کنید…';$('#authErr').textContent='';
   try{
     const d=await post(authMode==='login'?'/api/login':'/api/signup',{email,password});
-    me=d.user;$('#auth').hidden=true;history.replaceState(null,'','/');startApp();window.sfx&&sfx.play(authMode==='login'?'login':'signup');
+    me=d.user;setSaved(d.saved);$('#auth').hidden=true;history.replaceState(null,'','/');startApp();migrateLocal();window.sfx&&sfx.play(authMode==='login'?'login':'signup');
   }catch(e){$('#authErr').textContent=errMsg(e);window.sfx&&sfx.play('error');const c=$('.acard');c&&!REDUCED()&&c.animate([{transform:'translateX(0)'},{transform:'translateX(-9px)'},{transform:'translateX(8px)'},{transform:'translateX(-5px)'},{transform:'translateX(0)'}],{duration:380,easing:'ease-out'})}
   btn.disabled=false;btn.textContent=authMode==='login'?'ورود به سایت':'ثبت نام و ورود';
 }
 $('#authSubmit').onclick=submitAuth;
 $('#authPass').addEventListener('keydown',e=>{if(e.key==='Enter')submitAuth()});
 
+/* ---------- live users, admin message, one-time notice ---------- */
+let presenceT=null;
+const fmtNum=n=>Number(n).toLocaleString(lang==='en'?'en-US':'fa-IR');
+const setLive=n=>{const el=$('#liveCount');if(el)el.textContent=fmtNum(n)};
+async function pingNow(force){
+  if(document.hidden&&!force)return;
+  try{const d=await post('/api/ping');setLive(d.online);if(d.sources)window.LM_SOURCES=d.sources}catch(e){if(e.code==='unauthorized')stopPresence()}
+}
+function startPresence(){stopPresence();pingNow(true);presenceT=setInterval(pingNow,20000)}
+function stopPresence(){clearInterval(presenceT);presenceT=null}
+document.addEventListener('visibilitychange',()=>{if(presenceT&&!document.hidden)pingNow()});
+
+const msgBox=$('#adminMsg'),msgCount=$('#msgCount');
+msgBox.addEventListener('input',()=>{msgCount.textContent=msgBox.value.length+' / 1000'});
+$('#sendMsgBtn').onclick=async()=>{
+  const text=msgBox.value.trim(),btn=$('#sendMsgBtn');
+  if(!text){toast('پیام را بنویسید',true);return}
+  btn.disabled=true;
+  try{await post('/api/message',{text});msgBox.value='';msgCount.textContent='0 / 1000';window.sfx&&sfx.play('success');toast('پیام ارسال شد')}
+  catch(e){toast(errMsg(e),true)}
+  btn.disabled=false;
+};
+
+const ntm=$('#notifModal');
+const closeNotif=()=>{ntm.hidden=true;document.body.style.overflow=(typeof pl!=='undefined'&&!pl.hidden)||!rl.hidden?'hidden':''};
+async function showNotif(){
+  try{
+    const d=await post('/api/notif');
+    if(!d.notif)return;
+    $('#ntBody').textContent=d.notif;ntm.hidden=false;document.body.style.overflow='hidden';
+    if(lang==='en')applyInstant(ntm,'en');
+    $('#ntOk').focus();
+  }catch(_){}
+}
+$('#ntOk').onclick=closeNotif;$('#ntX').onclick=closeNotif;
+ntm.onclick=e=>{if(e.target===ntm)closeNotif()};
+document.addEventListener('keydown',e=>{if(!ntm.hidden&&e.key==='Escape')closeNotif()});
+
 function startApp(){
   $('#auth').hidden=true;
   $('#meEmail').textContent=me.email||'';$('#meName').textContent='حساب من';
   $$('#v-me .db-toggle').forEach(button=>{button.onclick=()=>{const panel=button.closest('.db-panel'),open=panel.classList.toggle('open');button.setAttribute('aria-expanded',String(open))}});
-  $$('[data-db]').forEach(c=>{try{c.checked=localStorage.getItem('lm_db_'+c.dataset.db)!=='0'}catch(_){};c.onchange=()=>{try{localStorage.setItem('lm_db_'+c.dataset.db,c.checked?'1':'0')}catch(_){}}});
   try{$('#autoTrailer').checked=localStorage.getItem('lm_auto')!=='0'}catch(_){}
   renderCategories();loadHome();loadFeatured();renderList();clearInterval(window.lmFeaturedTimer);window.lmFeaturedTimer=setInterval(loadFeatured,60*60*1000);
+  startPresence();showNotif();
 }
 $('#autoTrailer').onchange=e=>{try{localStorage.setItem('lm_auto',e.target.checked?'1':'0')}catch(_){};if(!e.target.checked)stopTrailer()};
 
@@ -1842,7 +1961,7 @@ $('#deleteBtn').onclick=async()=>{
 (async()=>{
   try{
     const d=await api('/api/me');
-    if(d.authenticated){me=d.user;history.replaceState(null,'','/');startApp()}else showAuth();
+    if(d.authenticated){me=d.user;setSaved(d.saved);history.replaceState(null,'','/');startApp();migrateLocal()}else showAuth();
   }catch(_){showAuth()}
   finally{document.documentElement.classList.remove('boot')}
 })();

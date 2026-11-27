@@ -10,6 +10,7 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 COPY server.js ./server.js
+COPY tgstore.js ./tgstore.js
 COPY config.json ./config.json
 COPY public ./public
 COPY data/movies.json ./data/movies.json

@@ -2,24 +2,25 @@
 'use strict';
 /*
  * lookmv — small zero-dependency Node server.
- * Accounts live in data/users.json, sessions in data/sessions.json,
- * the movie catalog in data/movies.json (built by scripts/build-movies.js).
+ * ALL user data (accounts, my-lists, notes, daily home rows + history, notice, shutdown, source switches)
+ * lives in a private Telegram channel (see tgstore.js) — nothing of it is kept on the server's disk.
+ * Only the movie catalog (data/movies.json) and the featured movie + its images stay on the server.
  */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { URL } = require('url');
+const { createStore } = require('./tgstore');
 
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
 const DATA = path.join(ROOT, 'data'); // immutable catalog shipped with the image
 const STORAGE = process.env.STORAGE_DIR ? path.resolve(process.env.STORAGE_DIR) : DATA; // writable/persistent user data
 fs.mkdirSync(STORAGE, { recursive: true });
-const USERS_FILE = path.join(STORAGE, 'users.json');
-const SESSIONS_FILE = path.join(STORAGE, 'sessions.json');
+/* legacy files: read ONCE to migrate old accounts into the channel, never written again */
+const LEGACY = f => [path.join(STORAGE, f), path.join(DATA, f)];
 const CACHE_FILE = path.join(STORAGE, 'enrich-cache.json');
-const HOME_FEED_FILE = path.join(STORAGE, 'home-feed.json');
 const FEATURED_FILE = path.join(STORAGE, 'featured.json');
 const CONFIG_FILE = path.join(ROOT, 'config.json');
 const PORT = Number(process.env.PORT || 3000);
@@ -32,28 +33,510 @@ function readJSON(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (e) { if (e.code !== 'ENOENT') console.error('[storage] read', file, e.message); return fallback; }
 }
-let store = readJSON(USERS_FILE, { users: [] });
-if (!Array.isArray(store.users)) store = { users: [] };
-let sessions = readJSON(SESSIONS_FILE, { sessions: {} });
-if (!sessions.sessions || typeof sessions.sessions !== 'object') sessions = { sessions: {} };
-if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, JSON.stringify(store));
-if (!fs.existsSync(SESSIONS_FILE)) fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions));
+const readLegacy = (f, fb) => { for (const x of LEGACY(f)) { const v = readJSON(x, undefined); if (v !== undefined) return v; } return fb; };
 let cache = readJSON(CACHE_FILE, {});
 let config = readJSON(CONFIG_FILE, { omdbKey: '', tmdbKey: '', youtubeFallback: false });
 // Railway and other container hosts should provide secrets as environment variables.
 config.tmdbKey = process.env.TMDB_API_KEY || process.env.TMDB_KEY || config.tmdbKey || '';
 config.omdbKey = process.env.OMDB_API_KEY || process.env.OMDB_KEY || config.omdbKey || '';
 
+/* ---- admin bot + channel storage (secrets live ONLY in environment variables) ----
+ * TELEGRAM_BOT_TOKEN  bot token from @BotFather
+ * TELEGRAM_ADMIN_ID   numeric Telegram id of the admin (the only person the bot obeys)
+ * TELEGRAM_CHANNEL    the storage channel: @username, https://t.me/username or the numeric id (-100…).
+ *                     The bot must be an ADMIN of it (post, edit and delete messages). It can later be
+ *                     changed / added / inspected from the bot with /channel.
+ * Nothing secret is written to config.json, logs or API replies. */
+const TG_TOKEN = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
+const TG_ADMIN = String(process.env.TELEGRAM_ADMIN_ID || '').trim();
+const TG_CHANNEL = String(process.env.TELEGRAM_CHANNEL || '').trim();
+const NOTIF_MAX = 2000;
+
+/* the database: a Telegram channel (local single file only when there is no bot token = dev mode) */
+const CH = createStore({
+  token: TG_TOKEN, adminId: TG_ADMIN, envChannel: TG_CHANNEL,
+  localFile: path.join(STORAGE, 'lookmv-state.local.json'),
+  onAlert: t => { sendTelegram(t); },
+  legacy: () => {
+    const lg = {};
+    const u = readLegacy('users.json', null); if (u && Array.isArray(u.users)) lg.users = u.users;
+    const h = readLegacy('home-feed.json', null); if (h && h.day) lg.home = h;
+    const n = readLegacy('notif.json', null); if (n && typeof n.text === 'string' && n.text.trim() && n.id) lg.notice = n;
+    const m = readLegacy('maintenance.json', null); if (m && m.on === true) lg.maint = m;
+    const sc = readLegacy('sources.json', null); if (sc && typeof sc === 'object') lg.sources = sc;
+    return Object.keys(lg).length ? lg : null;
+  },
+});
+let notice = null; // { text, id, updatedAt } | null   (kept in CH.state.notice)
+function saveNotice(next) {
+  notice = next; CH.state.notice = next; CH.touch();
+  CH.log(next ? '📢 <b>اعلان سایت منتشر شد</b>\n<blockquote>' + esc(next.text) + '</blockquote>' : '📢 اعلان سایت حذف شد');
+}
+/* a fresh id on every publish, so re-publishing the same text shows it to everyone once more */
+const makeNotice = text => ({ text, id: crypto.randomBytes(6).toString('hex'), updatedAt: new Date().toISOString() });
+
+/* ---- emergency shutdown: the admin switches it from the bot; while on, the whole site shows a notice ---- */
+const MAINT_MAX = 500;
+const MAINT_DEFAULT = 'سایت موقتاً از دسترس خارج شده است. لطفاً کمی بعد دوباره سر بزنید.';
+let maint = null; // { on, text, since } | null   (kept in CH.state.maint)
+function saveMaint(next) {
+  maint = next; CH.state.maint = next; CH.touch();
+  CH.log(next ? '🚨 <b>خاموشی اضطراری فعال شد</b>\n<blockquote>' + esc(next.text) + '</blockquote>' : '✅ سایت دوباره فعال شد');
+}
+const escHtml = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function maintPage(text) {
+  return '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">'
+    + '<title>lookmv</title><style>'
+    + ':root{color-scheme:dark light;--bg:#080b0a;--pn:#101614;--ln:#26302c;--tx:#e8efea;--mt:#8a968f;--pk:#f27a86}'
+    + '@media(prefers-color-scheme:light){:root{--bg:#f2f9f4;--pn:#fff;--ln:#cfdcd3;--tx:#101a14;--mt:#5d6a62;--pk:#c0392b}}'
+    + '*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:20px;background:var(--bg);color:var(--tx);font:16px/1.9 Vazirmatn,system-ui,sans-serif}'
+    + '.c{width:min(520px,100%);padding:32px 26px;border-radius:26px;background:var(--pn);border:1px solid var(--ln);text-align:center}'
+    + '.i{width:64px;height:64px;margin:0 auto 18px;display:grid;place-items:center;border-radius:50%;background:color-mix(in srgb,var(--pk) 14%,transparent);color:var(--pk)}'
+    + '.i svg{width:32px;height:32px}h1{margin:0 0 14px;font-size:22px}'
+    + 'p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;direction:rtl;text-align:right;color:var(--mt)}'
+    + '.l{margin-top:22px;font-weight:800;color:var(--mt);letter-spacing:.5px;direction:ltr;font-size:14px}'
+    + '</style></head><body><main class="c"><div class="i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg></div>'
+    + '<h1>سایت موقتاً در دسترس نیست</h1><p>' + escHtml(text) + '</p><div class="l">lookmv</div></main>'
+    + '<script>setInterval(function(){fetch("/api/status",{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){if(d&&d.maintenance===false)location.reload()}).catch(function(){})},15000)</script>'
+    + '</body></html>';
+}
+
+/* ---- search sources: switched on/off by the admin from the bot, applied site-wide ---- */
+const SOURCES = [{ id: 'd1', name: 'Animex' }, { id: 'd2', name: 'Atlasmind' }, { id: 'd3', name: 'Zardfilm' }, { id: 'd4', name: 'Doostihaa' }];
+const sourcesOn = Object.fromEntries(SOURCES.map(x => [x.id, true])); // default: everything on (kept in CH.state.sources)
+function saveSources() {
+  CH.state.sources = { ...sourcesOn }; CH.touch();
+  CH.log('🗄 <b>منابع جستجو</b>: ' + SOURCES.map(x => (sourcesOn[x.id] ? '🟢' : '🔴') + ' ' + x.name).join(' · '));
+}
+/* (re)load everything that lives in the channel state; runs on first connect and after a channel switch */
+function hydrate() {
+  const st = CH.state;
+  notice = st.notice && typeof st.notice.text === 'string' && st.notice.text.trim() && st.notice.id ? st.notice : null;
+  maint = st.maint && st.maint.on === true && typeof st.maint.text === 'string' ? st.maint : null;
+  for (const x of SOURCES) sourcesOn[x.id] = !(st.sources && st.sources[x.id] === false);
+  homeFeed = st.home && typeof st.home === 'object' ? st.home : homeFeed;
+  if (!st.history.length && Array.isArray(homeFeed.rows) && homeFeed.rows.length && homeFeed.day) {   // first run after migrating
+    st.history.push({ day: homeFeed.day, at: homeFeed.refreshedAt, genres: homeFeed.rows.map(r => r.genre), rows: homeFeed.rows.map(r => ({ genre: r.genre, ids: r.ids || [] })), ids: homeFeed.rows.flatMap(r => r.ids || []), top: homeFeed.top || [], latest: homeFeed.latest || [] });
+    CH.touch();
+  }
+}
+
+/* live presence: a signed-in browser pings every ~20s while its tab is visible */
+const PRESENCE_TTL = 45000;
+const presence = new Map(); // userId -> last ping time
+function onlineCount() {
+  const now = Date.now();
+  for (const [id, t] of presence) if (now - t > PRESENCE_TTL) presence.delete(id);
+  return presence.size;
+}
+
+const MSG_MAX = 1000, MSG_GAP = 20000, MSG_HOURLY = 5;
+const msgLog = new Map(); // userId -> [timestamps]
+/* minimal Telegram Bot API client (the token never leaves this function) */
+async function tg(method, payload, timeoutMs = 10000) {
+  if (!TG_TOKEN) return null;
+  const r = await CH.api(method, payload, { timeout: timeoutMs });
+  if (!r.ok) { console.error('[telegram]', method, 'http', r.code, r.desc && r.desc.slice(0, 80)); return null; }
+  return r.result;
+}
+const sendTelegram = async text => !!(TG_TOKEN && TG_ADMIN && await tg('sendMessage', { chat_id: TG_ADMIN, text, disable_web_page_preview: true }));
+
+/* ====================== admin bot ======================
+ * /start (menu) · /notif (site notice) · /db (search databases) · /cancel
+ * Only TELEGRAM_ADMIN_ID, only in a private chat. Everything else is ignored silently.
+ * Callback data:  m:*  main menu   n:*  notice   d:*  databases                      */
+const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const btn = (text, data, style) => ({ text, callback_data: data, ...(style ? { style } : {}) }); // style: primary | success | danger
+const HOME_BTN = () => btn('🏠 منوی اصلی', 'm:home');
+const botState = { mode: null, draft: '', intent: 'switch', cand: null }; // flows: 'await_text' | 'confirm' | 'await_maint' | 'confirm_maint' | 'await_channel' | null
+const resetFlow = () => { botState.mode = null; botState.draft = ''; botState.cand = null; };
+
+/* ---- screens: each returns { text, markup } ---- */
+const SCREEN = {
+  home: () => ({
+    text: '🛠 <b>پنل مدیریت lookmv</b>\n\n' + (maint ? '🔴 <b>سایت در حالت خاموشی است</b>\n\n' : '')
+      + (CH.status !== 'ready' ? '⚠️ <b>ذخیره‌سازی کانال آماده نیست</b> — بخش «کانال ذخیره‌سازی» را ببینید.\n\n' : '') + 'یک بخش را انتخاب کنید:',
+    markup: { inline_keyboard: [
+      [btn('📢 اعلان سایت', 'n:back', 'primary'), btn('🗄 دیتابیس جستجو', 'd:menu', 'primary')],
+      [btn('📡 کانال ذخیره‌سازی', 'c:menu', CH.status === 'ready' ? 'primary' : 'danger'), btn('👥 کاربران', 'u:list', 'primary')],
+      [btn('🚨 خاموشی اضطراری', 'x:menu', 'danger')],
+      [btn('✖️ بستن', 'm:close')],
+    ] },
+  }),
+
+  /* --- notice --- */
+  notif: () => ({
+    text: notice
+      ? '📢 <b>اعلان سایت</b>\n\nوضعیت: ✅ فعال\nآخرین انتشار: ' + esc(new Date(notice.updatedAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' })) + '\n\nهر کاربر فقط یک‌بار این اعلان را می‌بیند.'
+      : '📢 <b>اعلان سایت</b>\n\nوضعیت: ⚪️ اعلانی فعال نیست\n\nبا «ثبت اعلان جدید» متنی بنویسید تا یک‌بار به همهٔ کاربران نشان داده شود.',
+    markup: { inline_keyboard: [
+      [btn(notice ? '✏️ تغییر متن اعلان' : '➕ ثبت اعلان جدید', 'n:new', 'primary')],
+      ...(notice ? [[btn('👁 نمایش متن فعلی', 'n:view'), btn('🗑 حذف از سایت', 'n:del', 'danger')]] : []),
+      [HOME_BTN()],
+    ] },
+  }),
+  notifAsk: () => ({
+    text: '✏️ <b>مرحلهٔ ۱ از ۲ — متن اعلان</b>\n\nمتن اعلان را همین‌جا بفرستید.\nمی‌توانید چند خط بنویسید؛ در سایت راست‌چین و سطربندی‌شده نمایش داده می‌شود.',
+    markup: { inline_keyboard: [[btn('❌ انصراف', 'n:cancel', 'danger')]] },
+  }),
+  notifConfirm: () => ({
+    text: '👀 <b>مرحلهٔ ۲ از ۲ — پیش‌نمایش</b>\n\n<blockquote>' + esc(botState.draft) + '</blockquote>\n\nمنتشر شود؟',
+    markup: { inline_keyboard: [
+      [btn('✅ انتشار در سایت', 'n:pub', 'success')],
+      [btn('✏️ نوشتن دوباره', 'n:new', 'primary'), btn('❌ انصراف', 'n:cancel', 'danger')],
+    ] },
+  }),
+  notifView: () => ({
+    text: '👁 <b>متن فعلی اعلان</b>\n\n<blockquote>' + esc(notice ? notice.text : '') + '</blockquote>',
+    markup: { inline_keyboard: [[btn('↩️ برگشت', 'n:back', 'primary')]] },
+  }),
+  notifDelSure: () => ({
+    text: '🗑 <b>حذف اعلان</b>\n\nاعلان از سایت برداشته می‌شود و کاربرانی که هنوز ندیده‌اند دیگر آن را نمی‌بینند.\n\nمطمئنید؟',
+    markup: { inline_keyboard: [[btn('🗑 بله، حذف شود', 'n:delok', 'danger')], [btn('↩️ برگشت', 'n:back')]] },
+  }),
+
+  /* --- emergency shutdown --- */
+  emergency: () => maint
+    ? {
+        text: '🚨 <b>خاموشی اضطراری</b>\n\nوضعیت: 🔴 <b>سایت خاموش است</b>\nاز: ' + esc(new Date(maint.since).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' }))
+          + '\n\nمتنی که کاربران می‌بینند:\n<blockquote>' + esc(maint.text) + '</blockquote>',
+        markup: { inline_keyboard: [
+          [btn('✅ فعال‌سازی دوباره سایت', 'x:off', 'success')],
+          [btn('✏️ تغییر متن خاموشی', 'x:new', 'primary')],
+          [HOME_BTN()],
+        ] },
+      }
+    : {
+        text: '🚨 <b>خاموشی اضطراری</b>\n\nوضعیت: ✅ سایت فعال است\n\nبا فعال‌کردن خاموشی، همهٔ صفحات و درخواست‌های سایت متوقف می‌شود و به‌جای آن متنی که شما بنویسید نشان داده می‌شود. هر لحظه می‌توانید از همین‌جا سایت را دوباره فعال کنید.',
+        markup: { inline_keyboard: [
+          [btn('🚨 فعال‌کردن خاموشی', 'x:new', 'danger')],
+          [HOME_BTN()],
+        ] },
+      },
+  emergencyAsk: () => ({
+    text: '✏️ <b>مرحلهٔ ۱ از ۲ — متن خاموشی</b>\n\nمتنی را که می‌خواهید کاربران ببینند همین‌جا بفرستید (حداکثر ' + MAINT_MAX + ' کاراکتر).\nیا از متن پیش‌فرض استفاده کنید:\n<blockquote>' + esc(MAINT_DEFAULT) + '</blockquote>',
+    markup: { inline_keyboard: [
+      [btn('⏭ استفاده از متن پیش‌فرض', 'x:default', 'primary')],
+      [btn('❌ انصراف', 'x:cancel', 'danger')],
+    ] },
+  }),
+  emergencyConfirm: () => ({
+    text: '👀 <b>مرحلهٔ ۲ از ۲ — تأیید</b>\n\nکاربران این متن را می‌بینند:\n<blockquote>' + esc(botState.draft) + '</blockquote>\n'
+      + (maint ? 'سایت همین حالا هم خاموش است؛ فقط متن عوض می‌شود.' : '⚠️ با تأیید، سایت <b>همین لحظه</b> برای همه از دسترس خارج می‌شود.'),
+    markup: { inline_keyboard: [
+      [btn(maint ? '✅ ثبت متن جدید' : '🚨 بله، سایت خاموش شود', 'x:go', maint ? 'success' : 'danger')],
+      [btn('✏️ نوشتن دوباره', 'x:new', 'primary'), btn('❌ انصراف', 'x:cancel', 'danger')],
+    ] },
+  }),
+
+  /* --- storage channel --- */
+  channel: () => {
+    const cur = CH.currentChannel(), info = CH.activeInfo, sv = CH.saveSummary();
+    const stIcon = { ready: '🟢 متصل و فعال', connecting: '🟡 در حال اتصال…', error: '🔴 خطا', no_channel: '⚪️ کانالی تنظیم نشده', readonly: '🔒 فقط‌خواندنی (محافظت از دیتا)' }[CH.status] || CH.status;
+    const nm = c => '<b>' + esc(c.title || '—') + '</b> ' + (c.username ? '(@' + esc(c.username) + ')' : '<code>' + esc(c.id) + '</code>');
+    const st = CH.state;
+    const lines = ['📡 <b>کانال ذخیره‌سازی (دیتابیس)</b>', '', 'وضعیت: ' + stIcon];
+    if (CH.mode === 'local') lines.push('⚠️ حالت محلی (بدون TELEGRAM_BOT_TOKEN) — فقط برای توسعه');
+    lines.push('کانال فعلی: ' + (cur ? nm(cur) : '—'));
+    if (info && info.ok) lines.push('دسترسی ربات: ارسال ' + (info.canPost ? '✅' : '❌') + ' · ویرایش/پین ' + (info.canEdit ? '✅' : '⚠️') + ' · حذف ' + (info.canDelete ? '✅' : '⚠️'));
+    if (CH.status === 'ready') {
+      lines.push('آخرین ذخیره: ' + (sv.lastSavedAt ? esc(new Date(sv.lastSavedAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' })) + ' · ' + Math.max(1, Math.round(sv.bytes / 1024)) + ' KB' : '—') + (sv.pending ? ' · ⏳ در صف ذخیره' : ' · ✅ همگام'));
+      lines.push('', '👥 کاربران: ' + st.users.length + ' · 📌 لیست‌ها: ' + Object.values(st.lists).reduce((a, l) => a + l.length, 0) + ' عنوان · 📝 یادداشت‌ها: ' + Object.values(st.notes).reduce((a, m) => a + Object.values(m).reduce((b, l) => b + l.length, 0), 0) + ' · 🏠 روزهای ثبت‌شده: ' + st.history.length);
+    }
+    if (CH.lastError) lines.push('', '❗️ ' + esc(CH.lastError));
+    if (CH.status === 'no_channel') lines.push('', 'یک کانال بسازید، ربات را ادمین آن کنید (ارسال، ویرایش و حذف پیام) و با «➕ افزودن کانال» معرفی‌اش کنید.');
+    if (CH.channels.length > 1) lines.push('', 'کانال‌های شناخته‌شده: ' + CH.channels.length + ' (دکمهٔ «کانال‌ها»)');
+    return { text: lines.join('\n'), markup: { inline_keyboard: [
+      [btn('🧪 تست اتصال', 'c:test', 'success'), btn('🔄 تغییر کانال', 'c:switch', 'primary')],
+      [btn('➕ افزودن کانال', 'c:add', 'primary'), btn('📋 کانال‌ها', 'c:list')],
+      [HOME_BTN()],
+    ] } };
+  },
+  channelAsk: () => ({
+    text: '📡 <b>' + (botState.intent === 'add' ? 'افزودن کانال' : 'تغییر کانال') + '</b>\n\nیکی از این‌ها را بفرستید:\n• <code>@username</code> یا لینک <code>https://t.me/username</code> (کانال عمومی)\n• شناسهٔ عددی مثل <code>-1001234567890</code>\n• یک پیام را از همان کانال <b>فوروارد</b> کنید (برای کانال خصوصی)\n\n⚠️ لینک دعوت خصوصی (<code>t.me/+…</code>) را ربات نمی‌تواند باز کند.\nپیش از آن، ربات را در کانال <b>ادمین</b> کنید: ارسال پیام، ویرایش پیام و حذف پیام.',
+    markup: { inline_keyboard: [[btn('❌ انصراف', 'c:menu', 'danger')]] },
+  }),
+  channelConfirm: () => {
+    const i = botState.cand, cur = CH.currentChannel(), known = CH.channels.some(c => c.id === i.id), same = cur && cur.id === i.id;
+    const head = '📡 <b>' + esc(i.title) + '</b> ' + (i.username ? '(@' + esc(i.username) + ')' : '') + '\n<code>' + esc(i.id) + '</code> · ' + (i.type === 'channel' ? 'کانال' : 'سوپرگروه');
+    const perms = 'ربات: ' + (i.isAdmin ? 'ادمین ✅' : 'ادمین نیست ❌') + ' · ارسال ' + (i.canPost ? '✅' : '❌') + ' · ویرایش/پین ' + (i.canEdit ? '✅' : '⚠️') + ' · حذف ' + (i.canDelete ? '✅' : '⚠️');
+    const rows = [];
+    let note;
+    if (!i.canPost) {
+      note = '❌ ربات هنوز اجازهٔ ارسال پیام در این کانال را ندارد. آن را ادمین کنید و «بررسی دوباره» را بزنید.';
+      rows.push([btn('🔁 بررسی دوباره', 'c:re', 'primary')]);
+    } else if (same) {
+      note = 'این همان کانال فعلی است.';
+      rows.push([btn('🧪 تست اتصال', 'c:test', 'success')]);
+    } else {
+      if (i.snapshotPinned) {
+        note = '📦 در این کانال از قبل دیتای lookmv هست.\n• «استفاده از دیتای آن کانال»: اطلاعات فعلی سایت با دیتای آنجا عوض می‌شود.\n• «جایگزینی»: دیتای فعلی سایت جای دیتای آن کانال را می‌گیرد.';
+        rows.push([btn('📥 استفاده از دیتای آن کانال', 'c:use', 'primary')], [btn('📤 جایگزینی با دیتای فعلی', 'c:copy', 'danger')]);
+      } else {
+        note = 'این کانال خالی است؛ با تأیید، همهٔ دیتای فعلی (کاربران، لیست‌ها، یادداشت‌ها، تاریخچه) به آن منتقل و کانال فعال می‌شود.';
+        rows.push([btn('✅ فعال‌سازی و انتقال دیتا', 'c:copy', 'success')]);
+      }
+      if (!known) rows.push([btn('💾 فقط افزودن به لیست', 'c:addonly')]);
+      if (!i.canEdit) note += '\n⚠️ بدون دسترسی ویرایش/پین، ربات نمی‌تواند پیام دیتابیس را پین کند و خواندن در راه‌اندازی بعدی ناموفق می‌شود.';
+    }
+    rows.push([btn('❌ انصراف', 'c:menu', 'danger')]);
+    return { text: head + '\n' + perms + '\n\n' + note, markup: { inline_keyboard: rows } };
+  },
+  channels: () => {
+    const rows = CH.channels.map((c, n) => [btn((c.id === CH.active ? '🟢 ' : '⚪️ ') + (c.title || c.id), 'c:pick:' + n, c.id === CH.active ? 'success' : undefined), ...(c.id === CH.active ? [] : [btn('🗑', 'c:rm:' + n, 'danger')])]);
+    rows.push([HOME_BTN(), btn('↩️ برگشت', 'c:menu', 'primary')]);
+    return {
+      text: '📋 <b>کانال‌های شناخته‌شده</b>\n\n' + (CH.channels.length ? CH.channels.map(c => (c.id === CH.active ? '🟢 ' : '⚪️ ') + esc(c.title || '—') + ' — ' + (c.username ? '@' + esc(c.username) : '<code>' + esc(c.id) + '</code>')).join('\n') + '\n\nروی هر کانال بزنید تا فعال شود. 🗑 فقط از این لیست حذفش می‌کند (چیزی در کانال پاک نمی‌شود).' : 'هنوز کانالی ثبت نشده است.'),
+      markup: { inline_keyboard: rows },
+    };
+  },
+
+  /* --- databases --- */
+  db: () => {
+    const on = SOURCES.filter(x => sourcesOn[x.id]).length, anyOff = on < SOURCES.length;
+    const rows = [];
+    for (let i = 0; i < SOURCES.length; i += 2) {
+      rows.push(SOURCES.slice(i, i + 2).map(x => btn((sourcesOn[x.id] ? '🟢 ' : '🔴 ') + x.name, 'd:t:' + x.id, sourcesOn[x.id] ? 'success' : 'danger')));
+    }
+    if (anyOff) rows.push([btn('🟢 روشن‌کردن همه', 'd:all', 'primary')]);
+    rows.push([HOME_BTN()]);
+    return {
+      text: '🗄 <b>دیتابیس‌های جستجو</b>\n\n'
+        + SOURCES.map(x => (sourcesOn[x.id] ? '🟢' : '🔴') + ' ' + x.name + ' <code>' + x.id + '</code> — ' + (sourcesOn[x.id] ? 'روشن' : 'خاموش')).join('\n')
+        + '\n\nروی هر دکمه بزنید تا همان منبع روشن/خاموش شود. تغییر تا چند ثانیه بعد برای همهٔ کاربران اعمال می‌شود.'
+        + (on === 0 ? '\n\n⚠️ همهٔ منابع خاموش‌اند؛ جستجوی سایت نتیجه‌ای نشان نمی‌دهد.' : ''),
+      markup: { inline_keyboard: rows },
+    };
+  },
+};
+
+/* edit the message in place; fall back to a fresh message when it cannot be edited */
+async function show(chatId, messageId, screen) {
+  const body = { chat_id: chatId, text: screen.text, parse_mode: 'HTML', reply_markup: screen.markup, disable_web_page_preview: true };
+  if (messageId) { const r = await tg('editMessageText', { ...body, message_id: messageId }); if (r) return r; }
+  return tg('sendMessage', body);
+}
+
+/* ---- text messages: commands + the notice text step ---- */
+const CHANNEL_ERR = {
+  not_found: '❌ چنین کانالی پیدا نشد. نام را دوباره بررسی کنید و مطمئن شوید ربات در آن عضو/ادمین است.',
+  denied: '❌ ربات به این کانال دسترسی ندارد؛ ابتدا آن را در کانال ادمین کنید.',
+  not_channel: '❌ این یک کانال نیست.',
+  invite: '❌ لینک دعوت خصوصی (t.me/+…) قابل استفاده نیست. کانال را فوروارد کنید یا شناسهٔ عددی (-100…) بفرستید.',
+  bad_ref: '❌ نشانی نامعتبر است. @username، لینک t.me یا شناسهٔ عددی بفرستید.',
+  empty: '❌ چیزی دریافت نشد.',
+  network: '❌ اتصال به تلگرام برقرار نشد؛ کمی بعد دوباره بفرستید.',
+};
+async function showCandidate(chatId, ref) {
+  const info = await CH.inspect(ref);
+  if (!info.ok) return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: CHANNEL_ERR[info.reason] || ('❌ ' + esc(info.desc || 'خطا')), reply_markup: SCREEN.channelAsk().markup });
+  botState.mode = 'confirm_channel'; botState.cand = info;
+  const sc = SCREEN.channelConfirm();
+  return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: sc.text, reply_markup: sc.markup });
+}
+async function sendUsers(chatId) {
+  const st = CH.state;
+  if (CH.status !== 'ready') return tg('sendMessage', { chat_id: chatId, text: 'ذخیره‌سازی آماده نیست.' });
+  const lines = st.users.map((u, i) => (i + 1) + '. ' + esc(u.email) + ' — 📌 ' + (st.lists[u.id] || []).length + ' · 📝 ' + Object.values(st.notes[u.id] || {}).reduce((a, l) => a + l.length, 0) + ' · ' + esc(String(u.createdAt || '').slice(0, 10)));
+  const head = '👥 <b>کاربران (' + st.users.length + ')</b>\n(رمزها فقط به‌صورت هش در دیتابیس هستند)\n\n';
+  let buf = head;
+  for (const l of lines.length ? lines : ['—']) { if (buf.length + l.length > 3800) { await tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: buf }); buf = ''; } buf += l + '\n'; }
+  return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: buf, reply_markup: { inline_keyboard: [[HOME_BTN()]] } });
+}
+async function botMessage(m) {
+  const chatId = m.chat.id, text = String(m.text || '').trim();
+  if (botState.mode === 'await_channel') {          // a forwarded channel message, or a typed link / @name / id
+    const fwd = (m.forward_origin && m.forward_origin.type === 'channel' && m.forward_origin.chat) || m.forward_from_chat;
+    if (fwd && fwd.id) return showCandidate(chatId, String(fwd.id));
+    if (text && !text.startsWith('/')) return showCandidate(chatId, text);
+  }
+  const cmd = (/^\/(\w+)(@\w+)?$/.exec(text) || [])[1];
+  if (cmd) {
+    resetFlow();
+    switch (cmd.toLowerCase()) {
+      case 'channel': return show(chatId, 0, SCREEN.channel());
+      case 'users': return sendUsers(chatId);
+      case 'start': case 'menu': case 'help': case 'cancel': return show(chatId, 0, SCREEN.home());
+      case 'notif': return show(chatId, 0, SCREEN.notif());
+      case 'db': return show(chatId, 0, SCREEN.db());
+      case 'emergency': return show(chatId, 0, SCREEN.emergency());
+      default: return;
+    }
+  }
+  if (!['await_text', 'await_maint'].includes(botState.mode) || !text || text.startsWith('/')) return;
+  const clean = text.replace(/\r\n/g, '\n').trim();
+  if (botState.mode === 'await_maint') {
+    if (clean.length > MAINT_MAX) {
+      return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: '⚠️ متن ' + clean.length + ' کاراکتر است؛ حداکثر ' + MAINT_MAX + ' کاراکتر مجاز است. کوتاه‌ترش کنید و دوباره بفرستید.', reply_markup: SCREEN.emergencyAsk().markup });
+    }
+    botState.mode = 'confirm_maint'; botState.draft = clean;
+    const sc = SCREEN.emergencyConfirm();
+    return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: sc.text, reply_markup: sc.markup });
+  }
+  if (clean.length > NOTIF_MAX) {
+    return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: '⚠️ متن ' + clean.length + ' کاراکتر است؛ حداکثر ' + NOTIF_MAX + ' کاراکتر مجاز است. کوتاه‌ترش کنید و دوباره بفرستید.', reply_markup: SCREEN.notifAsk().markup });
+  }
+  botState.mode = 'confirm'; botState.draft = clean;
+  const sc = SCREEN.notifConfirm();
+  return tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: sc.text, reply_markup: sc.markup });
+}
+
+/* ---- button presses ---- */
+async function botCallback(q) {
+  const chatId = q.message && q.message.chat.id, mid = q.message && q.message.message_id, d = String(q.data || '');
+  if (!chatId) return;
+  const ack = (t, alert) => tg('answerCallbackQuery', { callback_query_id: q.id, ...(t ? { text: t, show_alert: !!alert } : {}) });
+  const go = async (screen, toast) => { await ack(toast); return show(chatId, mid, screen); };
+
+  if (d === 'm:home') { resetFlow(); return go(SCREEN.home()); }
+  if (d === 'm:close') { resetFlow(); await ack(); return tg('deleteMessage', { chat_id: chatId, message_id: mid }); }
+
+  if (d === 'u:list') { resetFlow(); await ack(); return sendUsers(chatId); }
+
+  if (d.startsWith('c:')) {
+    const cand = async ref => {
+      const info = await CH.inspect(ref);
+      if (!info.ok) { await ack(CHANNEL_ERR[info.reason] ? CHANNEL_ERR[info.reason].slice(2, 60) : 'ناموفق', true); return; }
+      botState.mode = 'confirm_channel'; botState.cand = info;
+      return go(SCREEN.channelConfirm());
+    };
+    const needCand = () => botState.mode === 'confirm_channel' && botState.cand;
+    if (d === 'c:menu') { resetFlow(); return go(SCREEN.channel()); }
+    if (d === 'c:switch' || d === 'c:add') { resetFlow(); botState.mode = 'await_channel'; botState.intent = d === 'c:add' ? 'add' : 'switch'; return go(SCREEN.channelAsk()); }
+    if (d === 'c:list') { resetFlow(); return go(SCREEN.channels()); }
+    if (d === 'c:test') {
+      await ack('در حال تست… چند ثانیه صبر کنید');
+      const r = await CH.selfTest();
+      const text = r.local ? '🧪 حالت محلی است؛ تست کانال معنا ندارد.'
+        : r.ok ? '🧪 <b>تست موفق ✅</b>\nذخیره در کانال، پین‌شدن و خواندن دوباره انجام شد.\nنسخهٔ خوانده‌شده: rev ' + r.rev + ' · کاربران: ' + r.users + ' · ' + Math.max(1, Math.round((r.bytes || 0) / 1024)) + ' KB\n' + (r.canEdit ? '' : '⚠️ دسترسی «ویرایش پیام/پین» ندارد.\n') + (r.canDelete ? '' : '⚠️ دسترسی «حذف پیام» ندارد.\n')
+        : '🧪 <b>تست ناموفق ❌</b>\n' + esc(r.desc || '');
+      return show(chatId, mid, { text: text + '\n\n' + SCREEN.channel().text, markup: SCREEN.channel().markup });
+    }
+    if (d === 'c:re') { if (!needCand()) return go(SCREEN.channel()); return cand(botState.cand.id); }
+    if (d.startsWith('c:pick:')) { const c = CH.channels[Number(d.slice(7))]; if (!c) return ack(); return cand(c.id); }
+    if (d.startsWith('c:rm:')) {
+      const c = CH.channels[Number(d.slice(5))];
+      if (c) await CH.removeChannel(c.id);
+      return go(SCREEN.channels(), c ? 'از لیست حذف شد' : '');
+    }
+    if (d === 'c:addonly') {
+      if (!needCand()) { resetFlow(); return go(SCREEN.channel()); }
+      await CH.addChannel(botState.cand); resetFlow();
+      return go(SCREEN.channels(), 'به لیست اضافه شد');
+    }
+    if (d === 'c:use' || d === 'c:copy') {
+      if (!needCand()) { await ack('این مرحله منقضی شده است', true); resetFlow(); return show(chatId, mid, SCREEN.channel()); }
+      await ack('در حال انتقال…');
+      const info = botState.cand;
+      const r = await CH.switchTo(info, d === 'c:use' ? 'use' : 'copy'); resetFlow();
+      if (r.ok) CH.log('📡 این کانال حالا دیتابیس lookmv است.');
+      return show(chatId, mid, { text: (r.ok ? '✅ <b>کانال ذخیره‌سازی عوض شد</b>\n\n' : '❌ <b>انجام نشد</b>\n' + esc(r.desc || '') + '\n\nهمه‌چیز مثل قبل باقی ماند.\n\n') + SCREEN.channel().text, markup: SCREEN.channel().markup });
+    }
+    if (d.startsWith('c:cand:')) { resetFlow(); return cand(d.slice(7)); }
+    return ack();
+  }
+
+  if (d.startsWith('x:')) {
+    switch (d) {
+      case 'x:menu': resetFlow(); return go(SCREEN.emergency());
+      case 'x:cancel': resetFlow(); return go(SCREEN.emergency(), 'لغو شد');
+      case 'x:new': botState.mode = 'await_maint'; botState.draft = ''; return go(SCREEN.emergencyAsk());
+      case 'x:default': botState.mode = 'confirm_maint'; botState.draft = MAINT_DEFAULT; return go(SCREEN.emergencyConfirm());
+      case 'x:go':
+        if (botState.mode !== 'confirm_maint' || !botState.draft) { resetFlow(); await ack('این مرحله منقضی شده است', true); return show(chatId, mid, SCREEN.emergency()); }
+        saveMaint({ on: true, text: botState.draft, since: maint ? maint.since : new Date().toISOString() }); resetFlow();
+        return go(SCREEN.emergency(), 'سایت خاموش شد 🔴');
+      case 'x:off':
+        saveMaint(null); resetFlow();
+        return go(SCREEN.emergency(), 'سایت دوباره فعال شد ✅');
+      default: return ack();
+    }
+  }
+
+  if (d.startsWith('d:')) {
+    resetFlow();
+    if (d === 'd:menu') return go(SCREEN.db());
+    if (d === 'd:all') { for (const x of SOURCES) sourcesOn[x.id] = true; saveSources(); return go(SCREEN.db(), 'همه روشن شدند'); }
+    const id = (/^d:t:(\w+)$/.exec(d) || [])[1], src = SOURCES.find(x => x.id === id);
+    if (!src) return ack();
+    sourcesOn[id] = !sourcesOn[id]; saveSources();
+    return go(SCREEN.db(), src.name + (sourcesOn[id] ? ' روشن شد' : ' خاموش شد'));
+  }
+
+  switch (d) {
+    case 'n:back': resetFlow(); return go(SCREEN.notif());
+    case 'n:cancel': resetFlow(); return go(SCREEN.notif(), 'لغو شد');
+    case 'n:new': botState.mode = 'await_text'; botState.draft = ''; return go(SCREEN.notifAsk());
+    case 'n:view': return notice ? go(SCREEN.notifView()) : go(SCREEN.notif());
+    case 'n:del': return go(SCREEN.notifDelSure());
+    case 'n:delok':
+      saveNotice(null); resetFlow();
+      return go({ text: '🗑 <b>اعلان حذف شد</b>', markup: { inline_keyboard: [[btn('↩️ برگشت', 'n:back', 'primary')]] } }, 'حذف شد 🗑');
+    case 'n:pub':
+      if (botState.mode !== 'confirm' || !botState.draft) { resetFlow(); await ack('این مرحله منقضی شده است', true); return show(chatId, mid, SCREEN.notif()); }
+      saveNotice(makeNotice(botState.draft)); resetFlow();
+      return go({
+        text: '✅ <b>اعلان منتشر شد</b>\n\nاز این لحظه هر کاربر در اولین ورود/بازدید، یک‌بار آن را می‌بیند.\n\n<blockquote>' + esc(notice.text) + '</blockquote>',
+        markup: { inline_keyboard: [[btn('↩️ برگشت', 'n:back', 'primary')]] },
+      }, 'منتشر شد ✅');
+    default: return ack();
+  }
+}
+
+/* only the configured admin, only in a private chat; everyone else is ignored silently */
+async function botUpdate(u) {
+  const adminId = Number(TG_ADMIN);
+  /* the admin just made the bot an administrator of a channel → offer to use it */
+  const mc = u.my_chat_member;
+  if (mc && mc.from && mc.from.id === adminId && mc.chat && mc.chat.type === 'channel' && mc.new_chat_member && mc.new_chat_member.status === 'administrator' && mc.new_chat_member.user && mc.new_chat_member.user.is_bot) {
+    return tg('sendMessage', {
+      chat_id: adminId, parse_mode: 'HTML',
+      text: '📡 ربات در کانال <b>' + esc(mc.chat.title || '') + '</b> ادمین شد.\nمی‌خواهید از آن به‌عنوان دیتابیس استفاده کنید؟',
+      reply_markup: { inline_keyboard: [[btn('🔎 بررسی و انتخاب', 'c:cand:' + mc.chat.id, 'primary')], [btn('نه، ممنون', 'm:close')]] },
+    });
+  }
+  if (u.message && u.message.chat.type === 'private' && u.message.from && u.message.from.id === adminId) return botMessage(u.message);
+  if (u.callback_query && u.callback_query.from && u.callback_query.from.id === adminId) return botCallback(u.callback_query);
+}
+async function botLoop() {
+  await tg('deleteWebhook', { drop_pending_updates: false });
+  await tg('setMyCommands', { commands: [
+    { command: 'start', description: 'پنل مدیریت' },
+    { command: 'notif', description: 'اعلان سایت' },
+    { command: 'db', description: 'دیتابیس‌های جستجو' },
+    { command: 'channel', description: 'کانال ذخیره‌سازی (دیدن / تغییر / افزودن)' },
+    { command: 'users', description: 'فهرست کاربران' },
+    { command: 'emergency', description: 'خاموشی اضطراری سایت' },
+    { command: 'cancel', description: 'لغو مرحلهٔ جاری' },
+  ] });
+  let offset = 0;
+  /* drop whatever piled up while the server was down: never replay old button presses (some actions, like switching
+     the storage channel, must only ever run from a fresh tap) */
+  const backlog = await tg('getUpdates', { offset: -1, timeout: 0, allowed_updates: ['message', 'callback_query', 'my_chat_member'] });
+  if (backlog && backlog.length) offset = backlog[backlog.length - 1].update_id + 1;
+  for (;;) {
+    const ups = await tg('getUpdates', { offset, timeout: 30, allowed_updates: ['message', 'callback_query', 'my_chat_member'] }, 40000);
+    if (!ups) { await new Promise(r => setTimeout(r, 5000)); continue; }
+    for (const u of ups) {
+      offset = u.update_id + 1;
+      try { await botUpdate(u); } catch (e) { console.error('[bot] handler error:', e && e.message); }
+    }
+  }
+}
+
+/* only the disposable metadata cache is written locally; every piece of user data goes to the channel */
 const saveTimers = new Map();
 function persist(which) {
   for (const f of which) {
+    if (f !== 'cache') continue;
     clearTimeout(saveTimers.get(f));
     saveTimers.set(f, setTimeout(() => {
-      const data = f === 'users' ? store : f === 'sessions' ? sessions : cache;
-      const file = f === 'users' ? USERS_FILE : f === 'sessions' ? SESSIONS_FILE : CACHE_FILE;
-      const tmp = file + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(data));
-      fs.renameSync(tmp, file);
+      try {
+        const tmp = CACHE_FILE + '.tmp';
+        fs.writeFileSync(tmp, JSON.stringify(cache));
+        fs.renameSync(tmp, CACHE_FILE);
+      } catch (e) { console.warn('[cache] write failed:', e.message); }
     }, 100));
   }
 }
@@ -75,25 +558,34 @@ function verifyPassword(user, password) {
 const cleanUser = u => ({ id: u.id, email: u.email, createdAt: u.createdAt });
 const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(e || '').trim()) && e.length <= 254;
 
-function newSession(res, userId) {
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions.sessions[token] = { userId, createdAt: Date.now() };
-  persist(['sessions']);
-  res.setHeader('Set-Cookie', `lm_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 86400}`);
+/* Sessions are stateless signed tokens (userId.expiry.signature) — nothing is stored.
+ * The signature covers the account's password hash, so changing the password (or deleting the account)
+ * signs out every device. The key is derived from the bot token, so sessions survive restarts and redeploys. */
+const SESSION_TTL = 30 * DAY;
+const SESSION_KEY = crypto.createHash('sha256').update('lookmv-session|' + (TG_TOKEN || 'local-dev-key')).digest();
+const sessionSig = (user, exp) => crypto.createHmac('sha256', SESSION_KEY).update(user.id + '.' + exp + '.' + String(user.hash).slice(0, 24)).digest('hex');
+function newSession(res, user) {
+  const exp = Date.now() + SESSION_TTL;
+  const token = user.id + '.' + exp + '.' + sessionSig(user, exp);
+  res.setHeader('Set-Cookie', `lm_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}`);
   return token;
 }
+const SESSION_COOKIE = /(?:^|;\s*)lm_session=([A-Za-z0-9._-]{40,200})(?:;|$)/;
 function sessionUser(req) {
-  const m = /(?:^|;\s*)lm_session=([a-f0-9]{64})(?:;|$)/.exec(req.headers.cookie || '');
+  const m = SESSION_COOKIE.exec(req.headers.cookie || '');
   if (!m) return null;
-  const s = sessions.sessions[m[1]];
-  if (!s) return null;
-  const u = store.users.find(x => x.id === s.userId);
-  if (!u) { delete sessions.sessions[m[1]]; persist(['sessions']); return null; }
-  return u;
+  const parts = m[1].split('.');
+  if (parts.length !== 3) return null;
+  const [id, expStr, sig] = parts, exp = Number(expStr);
+  if (!Number.isFinite(exp) || exp < Date.now()) return null;
+  const u = CH.state.users.find(x => x.id === id);
+  if (!u) return null;
+  try {
+    const a = Buffer.from(sig, 'hex'), b = Buffer.from(sessionSig(u, exp), 'hex');
+    return a.length === b.length && crypto.timingSafeEqual(a, b) ? u : null;
+  } catch { return null; }
 }
 function destroySession(req, res) {
-  const m = /(?:^|;\s*)lm_session=([a-f0-9]{64})(?:;|$)/.exec(req.headers.cookie || '');
-  if (m) { delete sessions.sessions[m[1]]; persist(['sessions']); }
   res.setHeader('Set-Cookie', 'lm_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
 }
 
@@ -631,7 +1123,7 @@ async function sourceLinks(site, id) {
 
 /* ------------------------- daily home feed ------------------------- */
 const localDay = () => new Date(Date.now() + TZ_OFFSET).toISOString().slice(0, 10);
-let homeFeed = readJSON(HOME_FEED_FILE, { day: '', top: [], latest: [], source: 'local' });
+let homeFeed = { day: '', top: [], latest: [], source: 'local' }; // lives in CH.state.home (hydrate())
 let homeFeedJob = null;
 /* Daily category rows: every Tehran day the server picks a few random real catalog genres
  * and ~12 random titles for each. Yesterday's genres/titles are excluded so rows are replaced day by day. */
@@ -656,6 +1148,9 @@ function seededShuffle(list, seed) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
+/* prev = { genres: categories used in the last few days, ids: EVERY title shown on any earlier day }.
+ * Categories used recently and titles already shown on a previous day are pushed to the back, so a title
+ * only comes back when a category has run out of unseen ones. */
 function buildDailyRows(day, prev) {
   const prevGenres = new Set(prev?.genres || []), prevIds = new Set(prev?.ids || []);
   let genres = seededShuffle(DAILY_HOME_CATEGORIES, day + '|lookmv-home-genres');
@@ -712,10 +1207,19 @@ function localLatestIds() {
     .slice(0, 50).map(m => m.id);
 }
 function uniqueIds(ids) { return [...new Set(ids.filter(id => BY_ID.has(id)))]; }
-function saveHomeFeed() {
-  const tmp = HOME_FEED_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(homeFeed));
-  fs.renameSync(tmp, HOME_FEED_FILE);
+const HOME_HISTORY_DAYS_FOR_GENRES = 3;   // a category is not picked again for this many days (when others are available)
+const movieTitle = id => { const m = BY_ID.get(id); return m ? (m.title || m.titleEn || id) : String(id); };
+/* record today's home in the channel: state (so it survives restarts + feeds the no-repeat history) and a readable post */
+function saveHomeFeed(rows) {
+  CH.state.home = homeFeed;
+  const hist = CH.state.history;
+  const entry = { day: homeFeed.day, at: homeFeed.refreshedAt, genres: rows.map(r => r.genre), rows: rows.map(r => ({ genre: r.genre, ids: r.ids })), ids: rows.flatMap(r => r.ids), top: homeFeed.top, latest: homeFeed.latest };
+  const i = hist.findIndex(h => h.day === homeFeed.day);
+  if (i >= 0) hist[i] = { ...hist[i], ...entry }; else hist.push(entry);
+  CH.touch();
+  CH.log('🏠 <b>صفحهٔ اصلی · ' + esc(homeFeed.day) + '</b>\n\n'
+    + rows.map((r, n) => (n + 1) + '. <b>' + esc(r.genre) + '</b>\n' + r.ids.map(id => '   • ' + esc(movieTitle(id))).join('\n')).join('\n\n')
+    + '\n\n⭐️ Top: ' + homeFeed.top.length + ' عنوان · 🆕 Latest: ' + homeFeed.latest.length + ' عنوان');
 }
 async function refreshHomeFeed() {
   const day = localDay();
@@ -740,11 +1244,14 @@ async function refreshHomeFeed() {
     const latestFallback = localLatestIds();
     const top = uniqueIds([...remoteTop, ...topFallback]).slice(0, 50);
     const latest = uniqueIds([...remoteLatest, ...latestFallback]).slice(0, 50);
-    const prevRows = homeFeed.rows || [];
-    const prev = { genres: prevRows.map(r => r.genre), ids: prevRows.flatMap(r => r.ids || []) };
+    const past = (CH.state.history || []).filter(h => h.day !== day).sort((a, b) => String(a.day).localeCompare(String(b.day)));
+    const prev = {
+      genres: past.slice(-HOME_HISTORY_DAYS_FOR_GENRES).flatMap(h => h.genres || []),
+      ids: past.flatMap(h => h.ids || []),
+    };
     const rows = buildDailyRows(day, prev);
     homeFeed = { day, refreshedAt: new Date().toISOString(), source: usedTMDb ? 'tmdb+catalog' : 'catalog', top, latest, genres: rows.map(r => r.genre), rows };
-    saveHomeFeed();
+    saveHomeFeed(rows);
     return homeFeed;
   })().finally(() => { homeFeedJob = null; });
   return homeFeedJob;
@@ -1255,13 +1762,18 @@ function limited(ip) {
   return a.n > 8;
 }
 
+const ID_RE = /^[\w:.\-]{1,80}$/;
+const LIST_MAX = 1000, NOTE_MAX = 1000, NOTES_PER_MOVIE = 200;
+const cleanTitle = t => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 150);
+const userList = user => (CH.state.lists[user.id] || []).slice();
+
 async function api(req, res, u) {
   const p = u.pathname, method = req.method;
   const ip = req.socket.remoteAddress || '?';
 
   if (p === '/api/me' && method === 'GET') {
     const user = sessionUser(req);
-    return json(res, 200, { authenticated: !!user, user: user ? cleanUser(user) : null });
+    return json(res, 200, { authenticated: !!user, user: user ? cleanUser(user) : null, saved: user ? userList(user) : [] });
   }
   if (p === '/api/signup' && method === 'POST') {
     if (limited(ip)) return json(res, 429, { error: 'too_many_requests' });
@@ -1269,22 +1781,55 @@ async function api(req, res, u) {
     const email = String(b.email || '').trim().toLowerCase();
     if (!validEmail(email)) return json(res, 400, { error: 'invalid_email' });
     if (String(b.password || '').length < 8) return json(res, 400, { error: 'weak_password' });
-    if (store.users.some(x => x.email === email)) return json(res, 409, { error: 'email_exists' });
+    if (CH.state.users.some(x => x.email === email)) return json(res, 409, { error: 'email_exists' });
     const user = { id: crypto.randomUUID(), email, ...makePassword(b.password), createdAt: new Date().toISOString() };
-    store.users.push(user); persist(['users']); newSession(res, user.id);
-    return json(res, 201, { ok: true, user: cleanUser(user) });
+    CH.state.users.push(user); CH.touch(); newSession(res, user);
+    CH.log('🆕 <b>ثبت‌نام</b>\n✉️ <code>' + esc(email) + '</code>\n🆔 <code>' + user.id + '</code>\n👥 کل کاربران: ' + CH.state.users.length);
+    return json(res, 201, { ok: true, user: cleanUser(user), saved: [] });
   }
   if (p === '/api/login' && method === 'POST') {
     if (limited(ip)) return json(res, 429, { error: 'too_many_requests' });
     const b = await body(req);
     const email = String(b.email || '').trim().toLowerCase();
-    const user = store.users.find(x => x.email === email);
+    const user = CH.state.users.find(x => x.email === email);
     if (!user || !verifyPassword(user, String(b.password || ''))) return json(res, 401, { error: 'invalid_credentials' });
-    newSession(res, user.id);
-    return json(res, 200, { ok: true, user: cleanUser(user) });
+    newSession(res, user);
+    return json(res, 200, { ok: true, user: cleanUser(user), saved: userList(user) });
   }
   const user = sessionUser(req);
   if (!['/api/logout'].includes(p) && !user) return json(res, 401, { error: 'unauthorized' });
+
+  /* live users counter */
+  if (p === '/api/ping' && method === 'POST') {
+    presence.set(user.id, Date.now());
+    return json(res, 200, { online: onlineCount(), sources: sourcesOn });
+  }
+
+  /* message to the admin (delivered through the Telegram bot) */
+  if (p === '/api/message' && method === 'POST') {
+    const b = await body(req);
+    const text = String(b.text || '').replace(/\r\n/g, '\n').trim();
+    if (!text) return json(res, 400, { error: 'empty_message' });
+    if (text.length > MSG_MAX) return json(res, 400, { error: 'message_too_long' });
+    if (!TG_TOKEN || !TG_ADMIN) return json(res, 503, { error: 'messaging_unavailable' });
+    const now = Date.now();
+    const log = (msgLog.get(user.id) || []).filter(t => now - t < 3600000);
+    if (log.length >= MSG_HOURLY || (log.length && now - log[log.length - 1] < MSG_GAP)) {
+      msgLog.set(user.id, log);
+      return json(res, 429, { error: 'too_many_requests' });
+    }
+    log.push(now); msgLog.set(user.id, log);
+    const ok = await sendTelegram('📩 پیام جدید از کاربر\n\n' + text + '\n\n— ' + user.email);
+    if (!ok) { log.pop(); return json(res, 502, { error: 'message_failed' }); }
+    return json(res, 200, { ok: true });
+  }
+
+  /* one-time notice: returned (and marked as seen) only the first time a user asks */
+  if (p === '/api/notif' && method === 'POST') {
+    if (!notice || user.notifSeen === notice.id) return json(res, 200, { notif: null });
+    user.notifSeen = notice.id; CH.touch();
+    return json(res, 200, { notif: notice.text });
+  }
 
   /* Subtitle bridge: fetches the remote .srt/.ass file (no browser CORS),
    * converts it to WebVTT and caches the result. Pass either the subtitle
@@ -1338,14 +1883,17 @@ async function api(req, res, u) {
     return sendVtt(res, found.vtt);
   }
 
-  if (p === '/api/logout' && method === 'POST') { destroySession(req, res); return json(res, 200, { ok: true }); }
+  if (p === '/api/logout' && method === 'POST') { if (user) presence.delete(user.id); destroySession(req, res); return json(res, 200, { ok: true }); }
   if (p === '/api/change-email' && method === 'POST') {
     const b = await body(req);
     const email = String(b.email || '').trim().toLowerCase();
     if (!validEmail(email)) return json(res, 400, { error: 'invalid_email' });
     if (!verifyPassword(user, String(b.password || ''))) return json(res, 401, { error: 'wrong_password' });
-    if (store.users.some(x => x.email === email && x.id !== user.id)) return json(res, 409, { error: 'email_exists' });
-    user.email = email; persist(['users']);
+    if (CH.state.users.some(x => x.email === email && x.id !== user.id)) return json(res, 409, { error: 'email_exists' });
+    const oldEmail = user.email;
+    user.email = email; CH.touch();
+    CH.log('✉️ <b>تغییر ایمیل</b>\n<code>' + esc(oldEmail) + '</code> ← <code>' + esc(email) + '</code>\n🆔 <code>' + user.id + '</code>');
+    newSession(res, user);   // same account, same password: keep this device signed in
     return json(res, 200, { ok: true, user: cleanUser(user) });
   }
   if (p === '/api/change-password' && method === 'POST') {
@@ -1353,18 +1901,92 @@ async function api(req, res, u) {
     if (!verifyPassword(user, String(b.currentPassword || ''))) return json(res, 401, { error: 'wrong_password' });
     if (String(b.newPassword || '').length < 8) return json(res, 400, { error: 'weak_password' });
     const pw = makePassword(b.newPassword);
-    user.salt = pw.salt; user.hash = pw.hash; persist(['users']);
-    // sign out every session of this account
-    for (const [t, s] of Object.entries(sessions.sessions)) if (s.userId === user.id) delete sessions.sessions[t];
-    persist(['sessions']); destroySession(req, res);
+    user.salt = pw.salt; user.hash = pw.hash; CH.touch();
+    CH.log('🔑 <b>تغییر رمز</b>\n✉️ <code>' + esc(user.email) + '</code>\n🆔 <code>' + user.id + '</code>\nرمز جدید به‌صورت هش در دیتابیس ذخیره شد.');
+    destroySession(req, res);   // the signature covers the password hash: every other device is signed out too
     return json(res, 200, { ok: true, loggedOut: true });
   }
   if (p === '/api/delete-account' && method === 'POST') {
     const b = await body(req);
     if (!verifyPassword(user, String(b.password || ''))) return json(res, 401, { error: 'wrong_password' });
-    store.users = store.users.filter(x => x.id !== user.id); persist(['users']);
-    for (const [t, s] of Object.entries(sessions.sessions)) if (s.userId === user.id) delete sessions.sessions[t];
-    persist(['sessions']); destroySession(req, res);
+    CH.state.users = CH.state.users.filter(x => x.id !== user.id);
+    delete CH.state.lists[user.id]; delete CH.state.notes[user.id]; CH.touch();
+    CH.log('🗑 <b>حذف حساب</b>\n✉️ <code>' + esc(user.email) + '</code>\n🆔 <code>' + user.id + '</code>\nلیست من و یادداشت‌های این کاربر هم پاک شد.\n👥 کل کاربران: ' + CH.state.users.length);
+    destroySession(req, res);
+    return json(res, 200, { ok: true });
+  }
+
+  /* ---- my list (per user, stored in the channel) ---- */
+  if (p === '/api/mylist' && method === 'GET') return json(res, 200, { ids: userList(user) });
+  if (p === '/api/mylist' && method === 'POST') {
+    const b = await body(req);
+    const id = String(b.id || '');
+    if (!ID_RE.test(id)) return json(res, 400, { error: 'bad_id' });
+    const list = CH.state.lists[user.id] || (CH.state.lists[user.id] = []);
+    const has = list.includes(id), want = b.on !== false;
+    if (want && !has) {
+      if (list.length >= LIST_MAX) return json(res, 400, { error: 'list_full' });
+      list.push(id); CH.touch(); CH.logList(user.email, true, cleanTitle(b.title) || id);
+    } else if (!want && has) {
+      CH.state.lists[user.id] = list.filter(x => x !== id); CH.touch(); CH.logList(user.email, false, cleanTitle(b.title) || id);
+    }
+    return json(res, 200, { ok: true, ids: userList(user) });
+  }
+  if (p === '/api/mylist/import' && method === 'POST') {   // one-time move of the old browser-only list
+    const b = await body(req);
+    const ids = (Array.isArray(b.ids) ? b.ids : []).map(String).filter(x => ID_RE.test(x)).slice(0, LIST_MAX);
+    const list = CH.state.lists[user.id] || (CH.state.lists[user.id] = []);
+    const add = ids.filter(x => !list.includes(x));
+    if (add.length) { list.push(...add); CH.touch(); CH.log('📌 <b>انتقال لیست من از مرورگر</b> · <code>' + esc(user.email) + '</code>\n' + add.length + ' عنوان'); }
+    return json(res, 200, { ok: true, ids: userList(user) });
+  }
+
+  /* ---- notes (per user + movie, stored in the channel) ---- */
+  if (p === '/api/notes' && method === 'GET') {
+    const movie = String(u.searchParams.get('movie') || '');
+    if (!ID_RE.test(movie)) return json(res, 400, { error: 'bad_id' });
+    return json(res, 200, { notes: ((CH.state.notes[user.id] || {})[movie] || []).map(n => ({ t: n.t, x: n.x })) });
+  }
+  if (p === '/api/notes' && method === 'POST') {
+    const b = await body(req);
+    const movie = String(b.movie || ''), text = String(b.text || '').replace(/\r\n/g, '\n').trim();
+    if (!ID_RE.test(movie)) return json(res, 400, { error: 'bad_id' });
+    if (!text) return json(res, 400, { error: 'empty_note' });
+    if (text.length > NOTE_MAX) return json(res, 400, { error: 'note_too_long' });
+    const mine = CH.state.notes[user.id] || (CH.state.notes[user.id] = {});
+    const arr = mine[movie] || (mine[movie] = []);
+    if (arr.length >= NOTES_PER_MOVIE) return json(res, 400, { error: 'too_many_notes' });
+    const note = { t: new Date().toISOString(), x: text };
+    arr.unshift(note); CH.touch();
+    CH.log('📝 <b>یادداشت</b> · <code>' + esc(user.email) + '</code>\n🎬 ' + esc(cleanTitle(b.title) || movie) + ' <code>' + esc(movie) + '</code>\n<blockquote>' + esc(text.length > 700 ? text.slice(0, 700) + '…' : text) + '</blockquote>');
+    return json(res, 200, { ok: true, note });
+  }
+  if (p === '/api/notes/import' && method === 'POST') {   // one-time move of the old browser-only notes
+    const b = await body(req);
+    const src = b.notes && typeof b.notes === 'object' ? b.notes : {};
+    const mine = CH.state.notes[user.id] || (CH.state.notes[user.id] = {});
+    let n = 0;
+    for (const [movie, list] of Object.entries(src).slice(0, 500)) {
+      if (!ID_RE.test(movie) || !Array.isArray(list) || (mine[movie] || []).length) continue;
+      const clean = list.map(x => ({ t: String(x && x.t || '').slice(0, 40) || 'imported', x: String(x && x.x || '').trim().slice(0, NOTE_MAX) })).filter(x => x.x).slice(0, NOTES_PER_MOVIE);
+      if (clean.length) { mine[movie] = clean; n += clean.length; }
+    }
+    if (n) { CH.touch(); CH.log('📝 <b>انتقال یادداشت‌ها از مرورگر</b> · <code>' + esc(user.email) + '</code>\n' + n + ' یادداشت'); }
+    return json(res, 200, { ok: true, imported: n });
+  }
+
+  /* the browser builds its own "new / top" rows from the source sites; the first report of each day is recorded */
+  if (p === '/api/home-report' && method === 'POST') {
+    const b = await body(req), day = localDay();
+    const norm = a => (Array.isArray(a) ? a : []).slice(0, 30).map(x => ({ id: String(x && x.id || '').slice(0, 80), title: cleanTitle(x && x.title) })).filter(x => ID_RE.test(x.id));
+    const latest = norm(b.latest), top = norm(b.top);
+    const hist = CH.state.history;
+    let h = hist.find(x => x.day === day);
+    if (!h) { h = { day, genres: [], rows: [], ids: [], top: [], latest: [] }; hist.push(h); }
+    const out = [];
+    if (latest.length && !h.latestShown) { h.latestShown = latest.map(x => x.id); out.push('🆕 <b>جدیدترین‌ها</b>\n' + latest.map(x => '   • ' + esc(x.title || x.id)).join('\n')); }
+    if (top.length && !h.topShown) { h.topShown = top.map(x => x.id); out.push('⭐️ <b>برترین‌ها</b>\n' + top.map(x => '   • ' + esc(x.title || x.id)).join('\n')); }
+    if (out.length) { CH.touch(); CH.log('🏠 <b>ردیف‌های امروز صفحهٔ اصلی · ' + esc(day) + '</b>\n\n' + out.join('\n\n')); }
     return json(res, 200, { ok: true });
   }
 
@@ -1445,6 +2067,23 @@ const server = http.createServer(async (req, res) => {
   try {
     const u = new URL(req.url, 'http://' + (req.headers.host || 'localhost'));
     if (u.pathname === '/health') return json(res, 200, { ok: true });
+    /* public status: lets an open page notice when the shutdown starts/ends */
+    if (u.pathname === '/api/status') return json(res, 200, maint ? { maintenance: true, text: maint.text } : { maintenance: false });
+    /* until the channel database has been read, nothing that needs user data can be answered */
+    if (!CH.isReady() && (u.pathname.startsWith('/api/') || u.pathname.startsWith('/img/'))) {
+      res.setHeader('Retry-After', '10');
+      return json(res, 503, { error: 'storage_unavailable' });
+    }
+    /* emergency shutdown: nothing else is served while it is on */
+    if (maint) {
+      if (u.pathname.startsWith('/api/')) {
+        res.setHeader('Retry-After', '300');
+        return json(res, 503, { error: 'maintenance', text: maint.text });
+      }
+      const page = maintPage(maint.text);
+      res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(page), 'Cache-Control': 'no-store', 'Retry-After': '300', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(req.method === 'HEAD' ? undefined : page);
+    }
     if (u.pathname.startsWith('/img/')) {
       if (!sessionUser(req)) return json(res, 401, { error: 'unauthorized' });
       const id = u.pathname.slice(5);
@@ -1464,8 +2103,22 @@ const server = http.createServer(async (req, res) => {
 });
 server.listen(PORT, HOST, () => {
   console.log(`lookmv running at http://localhost:${PORT}`);
-  console.log(`users: ${USERS_FILE}`);
+  console.log(`database: ${TG_TOKEN ? 'Telegram channel (' + (TG_CHANNEL || 'set from the bot with /channel') + ')' : 'LOCAL dev file (no TELEGRAM_BOT_TOKEN)'}`);
   console.log(`API config: ${CONFIG_FILE}`);
-  // The browser now builds the home lists itself from the source sites.
-  // No external metadata is fetched on the server.
+  CH.onReady(hydrate);
+  CH.init().then(() => {
+    if (CH.isReady()) CH.log('✅ <b>سرور راه‌اندازی شد</b> · rev ' + CH.state.rev + ' · ' + CH.state.users.length + ' کاربر');
+    else if (TG_ADMIN) sendTelegram('⚠️ lookmv بالا آمد ولی ذخیره‌سازی کانال آماده نیست: ' + (CH.status === 'no_channel' ? 'هنوز کانالی تنظیم نشده. در ربات /channel را بزنید.' : (CH.lastError || CH.status)));
+  }).catch(e => console.error('[store] init failed:', e && e.message));
+  if (TG_TOKEN && TG_ADMIN) botLoop().catch(e => console.error('[bot] stopped:', e && e.message));
+  else console.log('[bot] disabled: set TELEGRAM_BOT_TOKEN and TELEGRAM_ADMIN_ID');
 });
+/* redeploys send SIGTERM: push any unsaved change to the channel before exiting */
+let stopping = false;
+const shutdown = sig => {
+  if (stopping) return; stopping = true;
+  console.log('[store] ' + sig + ': saving to the channel before exit…');
+  Promise.race([CH.flushNow().catch(() => {}).then(() => CH.drainLogs(5000)).catch(() => {}), new Promise(r => setTimeout(r, 9000))]).then(() => process.exit(0));
+};
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

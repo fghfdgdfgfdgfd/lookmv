@@ -531,34 +531,35 @@
   function searchStream(q, page, per, onItems, signal) {
     var p = page || 1, term = String(q || '').trim(), n = per || 12;
     if (!term) return Promise.reject(new Error('empty query'));
-    var key = term.toLowerCase() + '|' + p + '|' + n;
+    /* which databases are on is decided by the admin (bot) and delivered by the server */
+    var enabled = Object.assign({ d1: true, d2: true, d3: true, d4: true }, window.LM_SOURCES || {});
+    var sig = ['d1', 'd2', 'd3', 'd4'].map(function (k) { return enabled[k] === false ? 0 : 1; }).join('');
+    var key = term.toLowerCase() + '|' + p + '|' + n + '|' + sig;
     var hit = searchCache.get(key);
     if (hit && Date.now() - hit.t < 300000) {
       if (onItems) onItems(hit.items);
       return Promise.resolve({ items: hit.items, hasMore: hit.hasMore });
     }
     var all = [], hasMore = false, enc = encodeURIComponent(term), T = 6000;
-    var enabled = { d1: true, d2: true, d3: true, d4: true };
-    try { Object.keys(enabled).forEach(function (k) { enabled[k] = localStorage.getItem('lm_db_' + k) !== '0'; }); } catch (_) {}
     var jobs = [
-      (enabled.d1 ? getJSON(AX + 'search?q=' + enc + '&per_page=' + n + '&page=' + p, T, signal) : Promise.resolve({})).then(function (d) {
+      (enabled.d1 !== false ? getJSON(AX + 'search?q=' + enc + '&per_page=' + n + '&page=' + p, T, signal) : Promise.resolve({})).then(function (d) {
         d = d || {};
         if (d.meta && d.meta.page < d.meta.total_pages) hasMore = true;
         return (d.data || []).map(mapAx);
       }),
-      (enabled.d2 ? getJSON(AM + 'posts?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal) : Promise.resolve([])).then(function (v) {
+      (enabled.d2 !== false ? getJSON(AM + 'posts?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal) : Promise.resolve([])).then(function (v) {
         v = v || []; if (v.length >= n) hasMore = true;
         return v.map(function (x) { return mapAtlas(x, 'movie'); });
       }),
-      (enabled.d2 ? getJSON(AM + 'series?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal) : Promise.resolve([])).then(function (v) {
+      (enabled.d2 !== false ? getJSON(AM + 'series?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal) : Promise.resolve([])).then(function (v) {
         v = v || []; if (v.length >= n) hasMore = true;
         return v.map(function (x) { return mapAtlas(x, 'series'); });
       }),
-      (enabled.d3 ? zardJSON('posts?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal) : Promise.resolve([])).then(function (v) {
+      (enabled.d3 !== false ? zardJSON('posts?search=' + enc + '&per_page=' + n + '&page=' + p + '&_embed=1', T, signal) : Promise.resolve([])).then(function (v) {
         v = v || []; if (v.length >= n) hasMore = true;
         return v.map(mapZard);
       }),
-      (enabled.d4 ? getJSON(DHS + '?q=' + enc + '&offset=' + ((p - 1) * Math.min(n, 10)), T, signal) : Promise.resolve({})).then(function (d) {
+      (enabled.d4 !== false ? getJSON(DHS + '?q=' + enc + '&offset=' + ((p - 1) * Math.min(n, 10)), T, signal) : Promise.resolve({})).then(function (d) {
         d = d || {}; if (d.has_more) hasMore = true;
         return (d.results || []).map(mapDoostiHit);
       })
